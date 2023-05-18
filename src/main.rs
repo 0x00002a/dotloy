@@ -11,6 +11,7 @@ use args::{Args, DeployCmd, ExpandCmd};
 use clap::Parser;
 use config::Root;
 use template::{Context, Variable};
+use thiserror::Error;
 
 mod actions;
 mod args;
@@ -59,29 +60,30 @@ fn find_cfg_file() -> Option<PathBuf> {
         None
     }
 }
-fn run_deploy(args: DeployCmd, cfg_file: &Root) -> anyhow::Result<()> {
+fn run_deploy(args: DeployCmd, cfg_file: &Root) -> Result<()> {
     let template_engine = default_parse_context();
     let actions = Actions::from_config(&cfg_file, &template_engine)?;
     actions.run(args.dry_run)?;
     Ok(())
 }
-fn run_expand(cmd: ExpandCmd, cfg: &Root) -> anyhow::Result<()> {
+fn run_expand(cmd: ExpandCmd, cfg: Option<&Root>) -> Result<()> {
     let target = &cmd.target;
     if !target.exists() {
-        return Err(anyhow!(
-            "Expand target '{target}' does not exist",
-            target = target.to_string_lossy()
+        return Err(Error::TargetDoesNotExist(
+            target.to_string_lossy().into_owned(),
         ));
     }
     let mut engine = default_parse_context();
-    engine.add_defines_with_namespace(Variable::config_level(), cfg.variables.iter())?;
-    if let Some(target) = cfg.targets.iter().find(|t| {
-        t.path
-            .render(&engine)
-            .map(|p| &p == cmd.target.to_string_lossy().as_ref())
-            .unwrap_or(false)
-    }) {
-        engine.add_defines_with_namespace(Variable::target_level(), target.variables.iter())?;
+    if let Some(cfg) = cfg {
+        engine.add_defines_with_namespace(Variable::config_level(), cfg.variables.iter())?;
+        if let Some(target) = cfg.targets.iter().find(|t| {
+            t.path
+                .render(&engine)
+                .map(|p| &p == cmd.target.to_string_lossy().as_ref())
+                .unwrap_or(false)
+        }) {
+            engine.add_defines_with_namespace(Variable::target_level(), target.variables.iter())?;
+        }
     }
     let content = std::fs::read_to_string(target)?;
     let rendered = engine.render(&content)?;
@@ -94,23 +96,52 @@ fn run_expand(cmd: ExpandCmd, cfg: &Root) -> anyhow::Result<()> {
 
     Ok(())
 }
+type Result<T, E = Error> = std::result::Result<T, E>;
 
-fn main() -> anyhow::Result<()> {
+#[derive(Error, Debug)]
+enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Parse(#[from] serde_yaml::Error),
+    #[error("Config file is required for this command")]
+    ConfigFileNeeded,
+    #[error("Config file '{path}' does not exist")]
+    ConfigFileDoesNotExist { path: String },
+    #[error(transparent)]
+    Action(#[from] actions::Error),
+    #[error(transparent)]
+    Template(#[from] template::Error),
+    #[error("Target does not exist '{0}'")]
+    TargetDoesNotExist(String),
+}
+fn run() -> Result<()> {
     let args = Args::parse();
     let cfg_file = args.config.or_else(find_cfg_file);
-    if cfg_file.as_ref().map(|c| !c.exists()).unwrap_or(true) {
-        return Err(anyhow!(
-            "No config file not found, rerun with --config or add a dotloy.yaml in the cwd"
-        ));
+    if let Some(p) = &cfg_file {
+        if !p.exists() {
+            return Err(Error::ConfigFileDoesNotExist {
+                path: p.to_string_lossy().into_owned(),
+            });
+        }
+        std::env::set_current_dir(p)?;
     }
-    let cfg_dir = cfg_file.as_ref().unwrap().parent().unwrap();
-    std::env::set_current_dir(cfg_dir)?;
-    let cfg_file = BufReader::new(std::fs::File::open(cfg_file.unwrap())?);
-    let cfg_file = serde_yaml::from_reader(cfg_file)?;
-    let r = match args.cmd {
-        args::Command::Expand(cmd) => run_expand(cmd, &cfg_file),
-        args::Command::Deploy(cmd) => run_deploy(cmd, &cfg_file),
-    };
+    let cfg_file = cfg_file
+        .map(|p| Ok::<_, Error>(BufReader::new(std::fs::File::open(p)?)))
+        .transpose()?
+        .map(|f| serde_yaml::from_reader(f))
+        .transpose()?;
+    match args.cmd {
+        args::Command::Expand(cmd) => run_expand(cmd, cfg_file.as_ref()),
+        args::Command::Deploy(cmd) => {
+            run_deploy(cmd, cfg_file.as_ref().ok_or(Error::ConfigFileNeeded)?)
+        }
+    }?;
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let r = run();
     if let Err(e) = r {
         eprintln!("{}", e);
         exit(1);
