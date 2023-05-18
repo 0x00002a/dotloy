@@ -9,7 +9,7 @@ pub struct Context {
     vars: HashMap<Variable, String>,
 }
 
-#[derive(Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Variable {
     segments: Vec<String>,
 }
@@ -19,6 +19,10 @@ impl Variable {
     }
     pub fn single(name: String) -> Self {
         Self::new(vec![name])
+    }
+    pub fn join(mut self, mut other: Self) -> Self {
+        self.segments.append(&mut other.segments);
+        self
     }
 }
 impl std::fmt::Display for Variable {
@@ -71,6 +75,12 @@ pub enum Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn variable_can_used_as_namespaces() {
+        let var = Variable::single("test".to_owned());
+        let t1 = var.clone().join(Variable::single("t1".to_owned()));
+        assert_eq!(t1, Variable::new(vec!["test".to_owned(), "t1".to_owned()]));
+    }
 
     #[test]
     fn context_render_replaces_input_vars() {
