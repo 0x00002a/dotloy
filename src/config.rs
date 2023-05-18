@@ -6,6 +6,8 @@ use crate::template::Templated;
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Default)]
 pub struct Root {
+    #[serde(default)]
+    pub variables: HashMap<String, String>,
     pub targets: Vec<Target>,
 }
 

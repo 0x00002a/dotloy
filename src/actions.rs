@@ -182,7 +182,15 @@ impl Actions {
     pub fn from_config(cfg: &config::Root, engine: &template::Context) -> Result<Self> {
         let mut resources = ResourceStore::new();
         let mut acts = Vec::new();
-        let local_ns = Variable::single("local".to_string());
+        let mut engine = engine.clone();
+        let local_ns = Variable::single("target".to_string());
+        let config_ns = Variable::single("config".to_string());
+        for (var, val) in &cfg.variables {
+            engine.define(
+                config_ns.clone().join(Variable::from_str(var)),
+                engine.render(val)?,
+            );
+        }
         for target in &cfg.targets {
             let mut engine = engine.clone();
             for (var, val) in &target.variables {
@@ -259,9 +267,28 @@ mod tests {
     }
 
     #[test]
-    fn variable_expansions_are_placed_in_local_and_can_include_other_expands() {
+    fn variable_expansions_on_root_are_placed_in_config() {
         let mut cfg: Root = Default::default();
-        let mut tgt = Target::new("{{ local.t1 }}".to_string(), "dst".to_string());
+        let tgt = Target::new("{{ config.t1 }}".to_string(), "dst".to_string());
+        let t1val = "{{ xdg.home }}/t".to_owned();
+        cfg.variables.insert("t1".to_owned(), t1val.clone());
+        cfg.targets.push(tgt);
+
+        let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
+        assert_eq!(
+            &acts.acts,
+            &[Action::Link {
+                ty: crate::config::LinkType::Hard,
+                from: xdg_context().render(&t1val).unwrap().into(),
+                to: "dst".into()
+            }]
+        )
+    }
+
+    #[test]
+    fn variable_expansions_are_placed_in_target_and_can_include_other_expands() {
+        let mut cfg: Root = Default::default();
+        let mut tgt = Target::new("{{ target.t1 }}".to_string(), "dst".to_string());
         let t1val = "{{ xdg.home }}/t".to_owned();
         tgt.variables.insert("t1".to_owned(), t1val.clone());
         cfg.targets.push(tgt);
