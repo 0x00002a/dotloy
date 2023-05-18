@@ -132,7 +132,7 @@ fn init_logging(level: log::LevelFilter) {
         .format(|out, msg, record| {
             if record.target() == "dotloy::actions" {
                 out.finish(format_args!(
-                    "[action]: {}",
+                    "{}",
                     msg.to_string().color(colour_for_level(record.level()))
                 ))
             } else {
@@ -167,7 +167,9 @@ fn run() -> Result<()> {
                 path: p.to_string_lossy().into_owned(),
             });
         }
-        std::env::set_current_dir(p)?;
+        if let Some(parent) = p.parent() {
+            std::env::set_current_dir(parent)?;
+        }
     }
     let cfg_file = cfg_file
         .map(|p| Ok::<_, Error>(BufReader::new(std::fs::File::open(p)?)))
