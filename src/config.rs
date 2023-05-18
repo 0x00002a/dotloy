@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct Root {
     pub targets: Vec<Target>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct Target {
     pub path: std::path::PathBuf,
     #[serde(default)]
@@ -17,9 +17,36 @@ pub struct Target {
     pub link_type: Option<LinkType>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum LinkType {
     Soft,
     Hard,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn verify_config(cfg: &str, expected: &Root) {
+        let parsed: Root = serde_yaml::from_str(cfg).expect("failed to parse config");
+        assert_eq!(&parsed, expected);
+    }
+
+    /*
+    #[test]
+    fn parse_basic_config() {
+        verify_config(
+            r"
+
+        ",
+            &Root {
+                targets: vec![Target {
+                    path: "p1",
+                    variables: Default::default(),
+                    target_location: "{{ xdg.home }}",
+                }],
+            },
+        );
+    }*/
 }
