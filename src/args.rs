@@ -6,6 +6,7 @@ pub struct Args {
     pub cmd: Command,
     #[arg(
         long,
+        global = true,
         help = "Config file to use. If not provided defaults to dotloy.yaml in cwd"
     )]
     pub config: Option<std::path::PathBuf>,
