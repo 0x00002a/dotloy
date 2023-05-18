@@ -5,19 +5,52 @@ use super::Variable;
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum ErrorType {
     #[error("variable segment is empty")]
-    EmptyVariableSegment { offset: usize },
+    EmptyVariableSegment,
+}
+
+#[derive(Error, Debug)]
+pub struct Error {
+    pub offset: (usize, usize),
+    #[source]
+    pub ty: ErrorType,
+}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (col, line) = self.offset;
+        write!(
+            f,
+            "{} at line {line} column {col}",
+            self.ty,
+            line = line + 1,
+            col = col + 1
+        )
+    }
+}
+
+impl Error {
+    pub fn new(offset: (usize, usize), ty: ErrorType) -> Self {
+        Self { offset, ty }
+    }
+    pub fn add_offset(mut self, offset: (usize, usize)) -> Self {
+        self.offset.0 += offset.0;
+        self.offset.1 += offset.1;
+        self
+    }
 }
 fn parse_template_inner(input: &[char]) -> Option<Result<(Vec<String>, usize)>> {
     let mut head = 0;
     let mut segments = Vec::new();
     let mut buf = String::new();
+    let mut row = 0;
+    let mut col = 0;
     while head < input.len() {
+        let offset = (col as usize, row as usize);
         match input[head..=head + 1] {
             ['}', '}'] => {
                 if buf.is_empty() {
-                    return Some(Err(Error::EmptyVariableSegment { offset: head }));
+                    return Some(Err(Error::new(offset, ErrorType::EmptyVariableSegment)));
                 } else {
                     segments.push(buf);
                 }
@@ -28,7 +61,7 @@ fn parse_template_inner(input: &[char]) -> Option<Result<(Vec<String>, usize)>> 
         match input[head] {
             '.' => {
                 if buf.is_empty() {
-                    return Some(Err(Error::EmptyVariableSegment { offset: head }));
+                    return Some(Err(Error::new(offset, ErrorType::EmptyVariableSegment)));
                 } else {
                     let mut emp = String::new();
                     std::mem::swap(&mut emp, &mut buf);
@@ -36,11 +69,16 @@ fn parse_template_inner(input: &[char]) -> Option<Result<(Vec<String>, usize)>> 
                 }
             }
             ' ' => {}
+            '\n' => {
+                row += 1;
+                col = -1;
+            }
             ch => {
                 buf.push(ch);
             }
         }
         head += 1;
+        col += 1;
     }
     None
 }
@@ -53,7 +91,10 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>> {
     let mut head = 0;
     let mut strbuf = String::new();
     let chars = input.chars().collect::<Vec<_>>();
+    let mut row = 0;
+    let mut col = 0;
     while head < input.len() {
+        let pos = (col, row);
         if head >= input.len() {
             break;
         }
@@ -67,7 +108,7 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>> {
                     head += len + 2;
                     Some(var)
                 }
-                Some(Err(e)) => return Err(e),
+                Some(Err(e)) => return Err(e.add_offset(pos)),
                 None => None,
             },
             _ => None,
@@ -81,6 +122,12 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>> {
             tokens.push(Token::Variable(Variable::new(var)));
         } else {
             strbuf.push(chars[head]);
+            if chars[head] == '\n' {
+                col = 0;
+                row += 1;
+            } else {
+                col += 1;
+            }
             head += 1;
         }
     }
