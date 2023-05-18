@@ -11,6 +11,7 @@ pub struct Root {
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct Target {
+    #[serde(rename = "from")]
     pub path: Templated<String>,
     #[serde(default)]
     pub variables: HashMap<String, String>,

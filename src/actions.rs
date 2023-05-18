@@ -232,7 +232,7 @@ mod tests {
     fn actions_with_template_does_copy() {
         let cfg = serde_yaml::from_str(
             r"
-                                       targets: [ { path: ./src.in, to: ./dst } ]
+                                       targets: [ { from: ./src.in, to: ./dst } ]
         ",
         )
         .unwrap();
@@ -256,7 +256,7 @@ mod tests {
     fn actions_on_link_only_expands_to_links() {
         let cfg = serde_yaml::from_str(
             r"
-                                       targets: [ { path: ./src, to: ./dst } ]
+                                       targets: [ { from: ./src, to: ./dst } ]
         ",
         )
         .unwrap();
