@@ -40,6 +40,12 @@ impl Variable {
     pub fn single(name: String) -> Self {
         Self::new(vec![name])
     }
+    pub fn config_level() -> Self {
+        Self::single("config".to_owned())
+    }
+    pub fn target_level() -> Self {
+        Self::single("target".to_owned())
+    }
 
     pub fn with_child(&self, child: &(impl ToString + ?Sized)) -> Self {
         let mut me = self.clone();
@@ -69,6 +75,18 @@ impl Context {
     pub fn define(&mut self, var: Variable, value: String) -> &mut Self {
         self.vars.insert(var, value);
         self
+    }
+    pub fn add_defines_with_namespace<'a>(
+        &mut self,
+        namespace: Variable,
+        defines: impl Iterator<Item = (&'a String, &'a String)>,
+    ) {
+        for (var, val) in defines {
+            self.define(
+                namespace.clone().join(Variable::from_str(var)),
+                val.to_owned(),
+            );
+        }
     }
 
     pub fn render(&self, input: &str) -> Result<String> {

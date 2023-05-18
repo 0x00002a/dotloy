@@ -145,7 +145,9 @@ impl ResourceStore {
     ) -> std::io::Result<()> {
         match target {
             ResourceLocation::InMemory { id } => Ok(self.set(*id, value)),
-            ResourceLocation::Path(p) => write!(fs::File::create(p)?, "{}", value.content()?),
+            ResourceLocation::Path(p) => {
+                write!(fs::File::create(p)?, "{}", value.content()?)
+            }
         }
     }
 
@@ -179,8 +181,8 @@ pub struct Actions {
 
 impl Actions {
     pub fn run(&self, dry: bool) -> Result<()> {
+        let mut res = self.resources.clone();
         for action in &self.acts {
-            let mut res = self.resources.clone();
             println!("{action}");
             if !dry {
                 action.run(&mut res)?;

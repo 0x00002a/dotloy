@@ -8,6 +8,7 @@ use actions::Actions;
 use anyhow::anyhow;
 use args::{Args, DeployCmd, ExpandCmd};
 use clap::Parser;
+use config::Root;
 use template::{Context, Variable};
 
 mod actions;
@@ -57,31 +58,30 @@ fn find_cfg_file() -> Option<PathBuf> {
         None
     }
 }
-fn run_deploy(args: DeployCmd) -> anyhow::Result<()> {
-    let cfg_file = args.config.or_else(find_cfg_file);
-    if cfg_file.as_ref().map(|c| !c.exists()).unwrap_or(true) {
-        return Err(anyhow!(
-            "No config file not found, rerun with --config or add a dotloy.yaml in the cwd"
-        ));
-    }
-    let cfg_dir = cfg_file.as_ref().unwrap().parent().unwrap();
-    std::env::set_current_dir(cfg_dir)?;
-    let cfg_file = BufReader::new(std::fs::File::open(cfg_file.unwrap())?);
-    let cfg_file = serde_yaml::from_reader(cfg_file)?;
+fn run_deploy(args: DeployCmd, cfg_file: &Root) -> anyhow::Result<()> {
     let template_engine = default_parse_context();
     let actions = Actions::from_config(&cfg_file, &template_engine)?;
     actions.run(args.dry_run)?;
     Ok(())
 }
-fn run_expand(cmd: ExpandCmd) -> anyhow::Result<()> {
-    let target = cmd.target;
+fn run_expand(cmd: ExpandCmd, cfg: &Root) -> anyhow::Result<()> {
+    let target = &cmd.target;
     if !target.exists() {
         return Err(anyhow!(
             "Expand target '{target}' does not exist",
             target = target.to_string_lossy()
         ));
     }
-    let engine = default_parse_context();
+    let mut engine = default_parse_context();
+    engine.add_defines_with_namespace(Variable::config_level(), cfg.variables.iter());
+    if let Some(target) = cfg.targets.iter().find(|t| {
+        t.path
+            .render(&engine)
+            .map(|p| &p == cmd.target.to_string_lossy().as_ref())
+            .unwrap_or(false)
+    }) {
+        engine.add_defines_with_namespace(Variable::target_level(), target.variables.iter());
+    }
     let content = std::fs::read_to_string(target)?;
     let rendered = engine.render(&content)?;
     match cmd.output {
@@ -94,14 +94,25 @@ fn run_expand(cmd: ExpandCmd) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    let cfg_file = args.config.or_else(find_cfg_file);
+    if cfg_file.as_ref().map(|c| !c.exists()).unwrap_or(true) {
+        return Err(anyhow!(
+            "No config file not found, rerun with --config or add a dotloy.yaml in the cwd"
+        ));
+    }
+    let cfg_dir = cfg_file.as_ref().unwrap().parent().unwrap();
+    std::env::set_current_dir(cfg_dir)?;
+    let cfg_file = BufReader::new(std::fs::File::open(cfg_file.unwrap())?);
+    let cfg_file = serde_yaml::from_reader(cfg_file)?;
     let r = match args.cmd {
-        args::Command::Expand(cmd) => run_expand(cmd),
-        args::Command::Deploy(cmd) => run_deploy(cmd),
+        args::Command::Expand(cmd) => run_expand(cmd, &cfg_file),
+        args::Command::Deploy(cmd) => run_deploy(cmd, &cfg_file),
     };
     if let Err(e) = r {
         eprintln!("{}", e);
         exit(1);
     }
+    Ok(())
 }

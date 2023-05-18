@@ -4,6 +4,11 @@ use clap::{Parser, Subcommand};
 pub struct Args {
     #[command(subcommand)]
     pub cmd: Command,
+    #[arg(
+        long,
+        help = "Config file to use. If not provided defaults to dotloy.yaml in cwd"
+    )]
+    pub config: Option<std::path::PathBuf>,
 }
 
 #[derive(Subcommand, Clone)]
@@ -27,11 +32,6 @@ pub struct ExpandCmd {
 }
 #[derive(clap::Args, Clone)]
 pub struct DeployCmd {
-    #[arg(
-        long,
-        help = "Config file to use. If not provided defaults to dotloy.yaml in cwd"
-    )]
-    pub config: Option<std::path::PathBuf>,
     #[arg(long, help = "Print actions but don't actually do them")]
     pub dry_run: bool,
 }
