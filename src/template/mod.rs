@@ -79,14 +79,15 @@ impl Context {
     pub fn add_defines_with_namespace<'a>(
         &mut self,
         namespace: Variable,
-        defines: impl Iterator<Item = (&'a String, &'a String)>,
-    ) {
+        defines: impl Iterator<Item = (&'a String, &'a Templated<String>)>,
+    ) -> Result<()> {
         for (var, val) in defines {
             self.define(
                 namespace.clone().join(Variable::from_str(var)),
-                val.to_owned(),
+                val.render(self)?,
             );
         }
+        Ok(())
     }
 
     pub fn render(&self, input: &str) -> Result<String> {

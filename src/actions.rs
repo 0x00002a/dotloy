@@ -194,22 +194,10 @@ impl Actions {
         let mut resources = ResourceStore::new();
         let mut acts = Vec::new();
         let mut engine = engine.clone();
-        let local_ns = Variable::single("target".to_string());
-        let config_ns = Variable::single("config".to_string());
-        for (var, val) in &cfg.variables {
-            engine.define(
-                config_ns.clone().join(Variable::from_str(var)),
-                engine.render(val)?,
-            );
-        }
+        engine.add_defines_with_namespace(Variable::config_level(), cfg.variables.iter())?;
         for target in &cfg.targets {
             let mut engine = engine.clone();
-            for (var, val) in &target.variables {
-                engine.define(
-                    local_ns.clone().join(Variable::from_str(var)),
-                    engine.render(val)?,
-                );
-            }
+            engine.add_defines_with_namespace(Variable::target_level(), target.variables.iter())?;
             let src_path: PathBuf = target.path.render(&engine)?.parse().unwrap();
             #[cfg(not(test))]
             if !src_path.exists() {
@@ -254,7 +242,9 @@ mod tests {
     use crate::{
         actions::{Action, ResourceLocation},
         config::{Root, Target},
-        default_parse_context, xdg_context,
+        default_parse_context,
+        template::Templated,
+        xdg_context,
     };
 
     use super::Actions;
@@ -290,7 +280,8 @@ mod tests {
         let mut cfg: Root = Default::default();
         let tgt = Target::new("{{ config.t1 }}".to_string(), "dst".to_string());
         let t1val = "{{ xdg.home }}/t".to_owned();
-        cfg.variables.insert("t1".to_owned(), t1val.clone());
+        cfg.variables
+            .insert("t1".to_owned(), Templated::new(t1val.clone()));
         cfg.targets.push(tgt);
 
         let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
@@ -309,7 +300,8 @@ mod tests {
         let mut cfg: Root = Default::default();
         let mut tgt = Target::new("{{ target.t1 }}".to_string(), "dst".to_string());
         let t1val = "{{ xdg.home }}/t".to_owned();
-        tgt.variables.insert("t1".to_owned(), t1val.clone());
+        tgt.variables
+            .insert("t1".to_owned(), Templated::new(t1val.clone()));
         cfg.targets.push(tgt);
 
         let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();

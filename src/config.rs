@@ -7,7 +7,7 @@ use crate::template::Templated;
 #[derive(Deserialize, Debug, PartialEq, Eq, Default)]
 pub struct Root {
     #[serde(default)]
-    pub variables: HashMap<String, String>,
+    pub variables: HashMap<String, Templated<String>>,
     pub targets: Vec<Target>,
 }
 
@@ -16,7 +16,7 @@ pub struct Target {
     #[serde(rename = "from")]
     pub path: Templated<String>,
     #[serde(default)]
-    pub variables: HashMap<String, String>,
+    pub variables: HashMap<String, Templated<String>>,
     #[serde(rename = "to")]
     pub target_location: Templated<String>,
     pub link_type: Option<LinkType>,
