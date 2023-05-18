@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::{actions::ResourceLocation, template::Templated};
+use crate::template::Templated;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 pub struct Root {

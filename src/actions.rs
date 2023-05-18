@@ -18,6 +18,10 @@ enum ResourceLocation {
 enum Action {
     Link {
         ty: LinkType,
+        from: PathBuf,
+        to: PathBuf,
+    },
+    Copy {
         from: ResourceLocation,
         to: ResourceLocation,
     },
@@ -66,31 +70,36 @@ impl Actions {
         let mut acts = Vec::new();
         for target in &cfg.targets {
             let mut engine = engine.clone();
-            for (var, val) in target.variables {
-                engine.define(Variable::from_str(&var), val);
+            for (var, val) in &target.variables {
+                engine.define(Variable::from_str(var), val.to_owned());
             }
-            let src_path: PathBuf = target.path.render(engine)?.parse().unwrap();
-            let dst_path: PathBuf = target.target_location.render(engine)?.parse().unwrap();
-            let mut src = ResourceLocation::Path(src_path.clone());
-            let mut dst = ResourceLocation::Path(dst_path.clone());
+            let src_path: PathBuf = target.path.render(&engine)?.parse().unwrap();
+            let dst_path: PathBuf = target.target_location.render(&engine)?.parse().unwrap();
+            let src = ResourceLocation::Path(src_path.clone());
+            let dst = ResourceLocation::Path(dst_path.clone());
             if src_path.extension() == Some("in".as_ref()) {
-                dst = resources.define_mem();
+                let template_dst = resources.define_mem();
                 acts.push(Action::TemplateExpand {
                     target: src.clone(),
-                    output: dst.clone(),
-                })
+                    output: template_dst.clone(),
+                });
+                acts.push(Action::Copy {
+                    from: template_dst,
+                    to: dst,
+                });
+            } else {
+                acts.push(Action::Link {
+                    ty: target.link_type.unwrap_or_else(|| {
+                        if dst_path.is_dir() {
+                            LinkType::Soft
+                        } else {
+                            LinkType::Hard
+                        }
+                    }),
+                    from: src_path,
+                    to: dst_path,
+                });
             }
-            acts.push(Action::Link {
-                ty: target.link_type.unwrap_or_else(|| {
-                    if dst_path.is_dir() {
-                        LinkType::Soft
-                    } else {
-                        LinkType::Hard
-                    }
-                }),
-                from: src,
-                to: dst,
-            });
         }
         Ok(Self { acts, resources })
     }
