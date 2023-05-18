@@ -56,7 +56,7 @@ fn find_cfg_file() -> Option<PathBuf> {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let cfg_file = args.config.or_else(find_cfg_file);
-    if cfg_file.is_none() {
+    if cfg_file.as_ref().map(|c| !c.exists()).unwrap_or(true) {
         eprintln!("No config file not found, rerun with --config or add a dotloy.yaml in the cwd");
         exit(1);
     }
