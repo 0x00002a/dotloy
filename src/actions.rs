@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use crate::{
     config::{self, LinkType},
-    template::{self, Templated, Variable},
+    template::{self, Variable},
 };
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
@@ -68,6 +68,31 @@ impl Action {
                 res.set_content(&output, ResourceHandle::MemStr(from))?;
                 Ok(())
             }
+        }
+    }
+}
+impl std::fmt::Display for ResourceLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResourceLocation::InMemory { id } => write!(f, "@{id}"),
+            ResourceLocation::Path(p) => write!(f, "{}", p.to_string_lossy()),
+        }
+    }
+}
+impl std::fmt::Display for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Action::Link { ty, from, to } => f.write_fmt(format_args!(
+                "{from} -> {to} [{typ}]",
+                typ = match ty {
+                    LinkType::Hard => "hard",
+                    LinkType::Soft => "soft",
+                },
+                from = from.to_string_lossy(),
+                to = to.to_string_lossy(),
+            )),
+            Action::Copy { from, to } => f.write_fmt(format_args!("[{from}] -> [{to}]")),
+            Action::TemplateExpand { target, output } => write!(f, "expand {target} to {output}"),
         }
     }
 }
@@ -144,8 +169,15 @@ pub struct Actions {
 }
 
 impl Actions {
-    pub fn run(&self, dry: bool) -> Result<()> {
-        todo!()
+    pub fn run(&self, engine: &template::Context, dry: bool) -> Result<()> {
+        for action in &self.acts {
+            let mut res = self.resources.clone();
+            println!("{action}");
+            if !dry {
+                action.run(&mut res, engine)?;
+            }
+        }
+        Ok(())
     }
     pub fn from_config(cfg: &config::Root, engine: &template::Context) -> Result<Self> {
         let mut resources = ResourceStore::new();

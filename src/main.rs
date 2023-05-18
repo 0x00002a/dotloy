@@ -1,5 +1,6 @@
-use std::path::PathBuf;
+use std::{io::BufReader, path::PathBuf, process::exit};
 
+use actions::Actions;
 use args::Args;
 use clap::Parser;
 use template::{Context, Variable};
@@ -31,6 +32,13 @@ fn xdg_context() -> template::Context {
 
 fn default_parse_context() -> template::Context {
     let mut ctx = template::Context::new();
+    ctx.define(
+        Variable::single("cwd".to_string()),
+        std::env::current_dir()
+            .unwrap()
+            .to_string_lossy()
+            .to_string(),
+    );
     ctx.append(xdg_context());
     ctx
 }
@@ -45,7 +53,17 @@ fn find_cfg_file() -> Option<PathBuf> {
     }
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let cfg_file = args.config.or_else(find_cfg_file);
+    if cfg_file.is_none() {
+        eprintln!("No config file not found, rerun with --config or add a dotloy.yaml in the cwd");
+        exit(1);
+    }
+    let cfg_file = BufReader::new(std::fs::File::open(cfg_file.unwrap())?);
+    let cfg_file = serde_yaml::from_reader(cfg_file)?;
+    let template_engine = default_parse_context();
+    let actions = Actions::from_config(&cfg_file, &template_engine)?;
+    actions.run(&template_engine, args.dry_run)?;
+    Ok(())
 }
