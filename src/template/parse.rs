@@ -2,6 +2,8 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use thiserror::Error;
 
+use super::Variable;
+
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Error, Debug)]
@@ -73,7 +75,7 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>> {
             _ => None,
         };
         if let Some(var) = var {
-            tokens.push(Token::Variable(var));
+            tokens.push(Token::Variable(Variable::new(var)));
         } else {
             strbuf.push(chars[head]);
             head += 1;
@@ -87,7 +89,7 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
-    Variable(Vec<String>),
+    Variable(Variable),
     Str(String),
 }
 
@@ -108,7 +110,7 @@ mod tests {
         assert_eq!(
             parsed.as_slice(),
             &[
-                Token::Variable(vec!["var".to_owned()]),
+                Token::Variable(Variable::new(vec!["var".to_owned()])),
                 Token::Str("etc".to_owned())
             ]
         );

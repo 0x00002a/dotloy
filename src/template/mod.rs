@@ -6,27 +6,55 @@ mod parse;
 
 #[derive(Debug, Default)]
 pub struct Context {
-    vars: HashMap<String, String>,
+    vars: HashMap<Variable, String>,
+}
+
+#[derive(Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Variable {
+    segments: Vec<String>,
+}
+impl Variable {
+    pub fn new(segments: Vec<String>) -> Self {
+        Self { segments }
+    }
+    pub fn single(name: String) -> Self {
+        Self::new(vec![name])
+    }
+}
+impl std::fmt::Display for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", self.segments.join(".")))
+    }
 }
 
 impl Context {
-    pub fn new(vars: HashMap<String, String>) -> Self {
-        Self { vars }
+    pub fn new() -> Self {
+        Self::default()
     }
-    pub fn with_define(mut self, name: String, value: String) -> Self {
-        self.define(name, value);
+    pub fn with_define(mut self, var: Variable, value: String) -> Self {
+        self.define(var, value);
         self
     }
 
-    pub fn define(&mut self, name: String, value: String) -> &mut Self {
-        self.vars.insert(name, value);
+    pub fn define(&mut self, var: Variable, value: String) -> &mut Self {
+        self.vars.insert(var, value);
         self
     }
 
-    pub fn render(&self, input: &str) -> Result<String, parse::Error> {
+    pub fn render(&self, input: &str) -> Result<String> {
         let tokens = parse::tokenize(input)?;
-
-        todo!()
+        let rendered = tokens
+            .into_iter()
+            .map(|tkn| match tkn {
+                parse::Token::Variable(v) => self
+                    .vars
+                    .get(&v)
+                    .ok_or_else(|| Error::UnmatchedVariable { var: v })
+                    .cloned(),
+                parse::Token::Str(s) => Ok(s),
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(rendered.join(""))
     }
 }
 
@@ -36,15 +64,18 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 pub enum Error {
     #[error(transparent)]
     Parse(#[from] parse::Error),
+    #[error("unknown variable: {var}")]
+    UnmatchedVariable { var: Variable },
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Context;
+    use super::*;
 
     #[test]
     fn context_render_replaces_input_vars() {
-        let ctx = Context::default().with_define("tvar".to_owned(), "expanded".to_owned());
+        let ctx = Context::default()
+            .with_define(Variable::single("tvar".to_owned()), "expanded".to_owned());
         let out = ctx.render("{{ tvar }}/smth").unwrap();
         assert_eq!(out, "expanded/smth");
     }
