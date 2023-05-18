@@ -2,11 +2,13 @@
 name = "dotloy"
 version = "0.1.2"
 edition = "2021"
+authors = ["0x00002a"]
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.2.7", features = ["derive"] }
+clap = { version = "4.2.7", features = ["derive", "cargo"] }
 colored = "2.0.0"
 directories = "5.0.1"
 fern = { version = "0.6.2", features = ["colored"] }

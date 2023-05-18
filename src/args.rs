@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
+#[command(version = clap::crate_version!(), author = clap::crate_authors!("\n"))]
 pub struct Args {
     #[command(subcommand)]
     pub cmd: Command,
