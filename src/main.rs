@@ -64,6 +64,8 @@ fn run_deploy(args: DeployCmd) -> anyhow::Result<()> {
             "No config file not found, rerun with --config or add a dotloy.yaml in the cwd"
         ));
     }
+    let cfg_dir = cfg_file.as_ref().unwrap().parent().unwrap();
+    std::env::set_current_dir(cfg_dir)?;
     let cfg_file = BufReader::new(std::fs::File::open(cfg_file.unwrap())?);
     let cfg_file = serde_yaml::from_reader(cfg_file)?;
     let template_engine = default_parse_context();

@@ -160,9 +160,11 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Template(#[from] template::Error),
+    #[error("Source file does not exist: '{path}'")]
+    SourceDoesNotExist { path: String },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Actions {
     acts: Vec<Action>,
     resources: ResourceStore,
@@ -200,6 +202,11 @@ impl Actions {
                 );
             }
             let src_path: PathBuf = target.path.render(&engine)?.parse().unwrap();
+            if !src_path.exists() {
+                return Err(Error::SourceDoesNotExist {
+                    path: src_path.to_string_lossy().into_owned(),
+                });
+            }
             let dst_path: PathBuf = target.target_location.render(&engine)?.parse().unwrap();
             let src = ResourceLocation::Path(src_path.clone());
             let dst = ResourceLocation::Path(dst_path.clone());
