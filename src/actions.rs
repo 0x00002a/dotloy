@@ -1,4 +1,10 @@
-use std::{collections::HashMap, io::Write, path::PathBuf, rc::Rc};
+use std::{
+    collections::HashMap,
+    fs,
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use serde::Deserialize;
 use thiserror::Error;
@@ -32,9 +38,52 @@ enum Action {
     },
 }
 
+impl Action {
+    fn run(&self, res: &mut ResourceStore, engine: &template::Context) -> Result<()> {
+        match self {
+            Action::Link { ty, from, to } => match ty {
+                LinkType::Soft => Ok(symlink::symlink_auto(from, to)?),
+                LinkType::Hard => {
+                    assert!(to.is_file(), "tried to hardlink directory");
+                    Ok(fs::hard_link(from, to)?)
+                }
+            },
+            Action::Copy { from, to } => match from {
+                ResourceLocation::InMemory { id: fid } => match to {
+                    ResourceLocation::InMemory { id: tid } => {
+                        res.set(*tid, res.get(*fid).clone());
+                        Ok(())
+                    }
+                    loc => Ok(res.set_content(loc, res.get(*fid).clone())?),
+                },
+                ResourceLocation::Path(pf) => match to {
+                    ResourceLocation::Path(pt) => Ok({
+                        fs::copy(pf, pt)?;
+                    }),
+                    loc => Ok(res.set_content(loc, ResourceHandle::File(pf.to_owned()))?),
+                },
+            },
+            Action::TemplateExpand { target, output } => {
+                let from = engine.render(&res.get_content(target)?)?;
+                res.set_content(&output, ResourceHandle::MemStr(from))?;
+                Ok(())
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum ResourceHandle {
     MemStr(String),
+    File(PathBuf),
+}
+impl ResourceHandle {
+    fn content(&self) -> std::io::Result<String> {
+        match self {
+            ResourceHandle::MemStr(s) => Ok(s.clone()),
+            ResourceHandle::File(f) => fs::read_to_string(f),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -54,6 +103,29 @@ impl ResourceStore {
     fn define_mem(&mut self) -> ResourceLocation {
         self.define(ResourceHandle::MemStr("".to_owned()))
     }
+    fn set(&mut self, target: usize, value: ResourceHandle) {
+        self.handles[target] = value;
+    }
+    fn set_content(
+        &mut self,
+        target: &ResourceLocation,
+        value: ResourceHandle,
+    ) -> std::io::Result<()> {
+        match target {
+            ResourceLocation::InMemory { id } => Ok(self.set(*id, value)),
+            ResourceLocation::Path(p) => write!(fs::File::create(p)?, "{}", value.content()?),
+        }
+    }
+
+    fn get(&self, target: usize) -> &ResourceHandle {
+        &self.handles[target]
+    }
+    fn get_content(&self, target: &ResourceLocation) -> std::io::Result<String> {
+        match target {
+            ResourceLocation::InMemory { id } => self.get(*id).content(),
+            ResourceLocation::Path(p) => fs::read_to_string(p),
+        }
+    }
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -72,6 +144,9 @@ pub struct Actions {
 }
 
 impl Actions {
+    pub fn run(&self, dry: bool) -> Result<()> {
+        todo!()
+    }
     pub fn from_config(cfg: &config::Root, engine: &template::Context) -> Result<Self> {
         let mut resources = ResourceStore::new();
         let mut acts = Vec::new();
