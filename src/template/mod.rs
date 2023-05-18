@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr};
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -10,6 +10,7 @@ mod parse;
 pub struct Templated<T>(T);
 
 impl<T> Templated<T> {
+    #[cfg(test)]
     pub fn new(val: T) -> Self {
         Self(val)
     }

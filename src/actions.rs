@@ -1,10 +1,4 @@
-use std::{
-    collections::HashMap,
-    fs,
-    io::{Read, Write},
-    path::{Path, PathBuf},
-    rc::Rc,
-};
+use std::{fs, io::Write, path::PathBuf};
 
 use serde::Deserialize;
 use thiserror::Error;
@@ -169,6 +163,7 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Template(#[from] template::Error),
+    #[cfg(not(test))]
     #[error("Source file does not exist: '{path}'")]
     SourceDoesNotExist { path: String },
 }

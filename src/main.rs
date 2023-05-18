@@ -73,14 +73,14 @@ fn run_expand(cmd: ExpandCmd, cfg: &Root) -> anyhow::Result<()> {
         ));
     }
     let mut engine = default_parse_context();
-    engine.add_defines_with_namespace(Variable::config_level(), cfg.variables.iter());
+    engine.add_defines_with_namespace(Variable::config_level(), cfg.variables.iter())?;
     if let Some(target) = cfg.targets.iter().find(|t| {
         t.path
             .render(&engine)
             .map(|p| &p == cmd.target.to_string_lossy().as_ref())
             .unwrap_or(false)
     }) {
-        engine.add_defines_with_namespace(Variable::target_level(), target.variables.iter());
+        engine.add_defines_with_namespace(Variable::target_level(), target.variables.iter())?;
     }
     let content = std::fs::read_to_string(target)?;
     let rendered = engine.render(&content)?;

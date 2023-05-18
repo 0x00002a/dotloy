@@ -23,6 +23,7 @@ pub struct Target {
 }
 
 impl Target {
+    #[cfg(test)]
     pub fn new(path: String, target_location: String) -> Self {
         Self {
             path: Templated::new(path),
@@ -38,31 +39,4 @@ impl Target {
 pub enum LinkType {
     Soft,
     Hard,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn verify_config(cfg: &str, expected: &Root) {
-        let parsed: Root = serde_yaml::from_str(cfg).expect("failed to parse config");
-        assert_eq!(&parsed, expected);
-    }
-
-    /*
-    #[test]
-    fn parse_basic_config() {
-        verify_config(
-            r"
-
-        ",
-            &Root {
-                targets: vec![Target {
-                    path: "p1",
-                    variables: Default::default(),
-                    target_location: "{{ xdg.home }}",
-                }],
-            },
-        );
-    }*/
 }
