@@ -182,10 +182,14 @@ impl Actions {
     pub fn from_config(cfg: &config::Root, engine: &template::Context) -> Result<Self> {
         let mut resources = ResourceStore::new();
         let mut acts = Vec::new();
+        let local_ns = Variable::single("local".to_string());
         for target in &cfg.targets {
             let mut engine = engine.clone();
             for (var, val) in &target.variables {
-                engine.define(Variable::from_str(var), val.to_owned());
+                engine.define(
+                    local_ns.clone().join(Variable::from_str(var)),
+                    engine.render(val)?,
+                );
             }
             let src_path: PathBuf = target.path.render(&engine)?.parse().unwrap();
             let dst_path: PathBuf = target.target_location.render(&engine)?.parse().unwrap();
@@ -223,7 +227,8 @@ impl Actions {
 mod tests {
     use crate::{
         actions::{Action, ResourceLocation},
-        default_parse_context,
+        config::{Root, Target},
+        default_parse_context, xdg_context,
     };
 
     use super::Actions;
@@ -250,6 +255,25 @@ mod tests {
                     to: ResourceLocation::Path("./dst".into())
                 }
             ]
+        )
+    }
+
+    #[test]
+    fn variable_expansions_are_placed_in_local_and_can_include_other_expands() {
+        let mut cfg: Root = Default::default();
+        let mut tgt = Target::new("{{ local.t1 }}".to_string(), "dst".to_string());
+        let t1val = "{{ xdg.home }}/t".to_owned();
+        tgt.variables.insert("t1".to_owned(), t1val.clone());
+        cfg.targets.push(tgt);
+
+        let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
+        assert_eq!(
+            &acts.acts,
+            &[Action::Link {
+                ty: crate::config::LinkType::Hard,
+                from: xdg_context().render(&t1val).unwrap().into(),
+                to: "dst".into()
+            }]
         )
     }
     #[test]

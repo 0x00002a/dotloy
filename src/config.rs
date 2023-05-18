@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::template::Templated;
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Debug, PartialEq, Eq, Default)]
 pub struct Root {
     pub targets: Vec<Target>,
 }
@@ -18,6 +18,17 @@ pub struct Target {
     #[serde(rename = "to")]
     pub target_location: Templated<String>,
     pub link_type: Option<LinkType>,
+}
+
+impl Target {
+    pub fn new(path: String, target_location: String) -> Self {
+        Self {
+            path: Templated::new(path),
+            variables: Default::default(),
+            target_location: Templated::new(target_location),
+            link_type: None,
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone, Copy)]
