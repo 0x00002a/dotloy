@@ -1,8 +1,24 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 mod parse;
+
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[repr(transparent)]
+pub struct Templated<T>(T);
+
+impl<T> Templated<T> {
+    pub fn new(val: T) -> Self {
+        Self(val)
+    }
+}
+impl<T: ToString> Templated<T> {
+    pub fn render(&self, engine: &Context) -> Result<String> {
+        engine.render(&self.0.to_string())
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct Context {
@@ -17,8 +33,18 @@ impl Variable {
     pub fn new(segments: Vec<String>) -> Self {
         Self { segments }
     }
+    pub fn from_str(s: &str) -> Self {
+        let vars = s.split('.').map(|s| s.to_owned()).collect();
+        Self::new(vars)
+    }
     pub fn single(name: String) -> Self {
         Self::new(vec![name])
+    }
+
+    pub fn with_child(&self, child: &(impl ToString + ?Sized)) -> Self {
+        let mut me = self.clone();
+        me.segments.push(child.to_string());
+        me
     }
     pub fn join(mut self, mut other: Self) -> Self {
         self.segments.append(&mut other.segments);
@@ -59,6 +85,9 @@ impl Context {
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(rendered.join(""))
+    }
+    pub fn append(&mut self, other: Self) {
+        self.vars.extend(other.vars.into_iter());
     }
 }
 
