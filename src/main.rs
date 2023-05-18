@@ -1,7 +1,8 @@
 use std::{io::BufReader, path::PathBuf, process::exit};
 
 use actions::Actions;
-use args::Args;
+use anyhow::anyhow;
+use args::{Args, DeployCmd};
 use clap::Parser;
 use template::{Context, Variable};
 
@@ -52,13 +53,12 @@ fn find_cfg_file() -> Option<PathBuf> {
         None
     }
 }
-
-fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+fn run_deploy(args: DeployCmd) -> anyhow::Result<()> {
     let cfg_file = args.config.or_else(find_cfg_file);
     if cfg_file.as_ref().map(|c| !c.exists()).unwrap_or(true) {
-        eprintln!("No config file not found, rerun with --config or add a dotloy.yaml in the cwd");
-        exit(1);
+        return Err(anyhow!(
+            "No config file not found, rerun with --config or add a dotloy.yaml in the cwd"
+        ));
     }
     let cfg_file = BufReader::new(std::fs::File::open(cfg_file.unwrap())?);
     let cfg_file = serde_yaml::from_reader(cfg_file)?;
@@ -66,4 +66,16 @@ fn main() -> anyhow::Result<()> {
     let actions = Actions::from_config(&cfg_file, &template_engine)?;
     actions.run(&template_engine, args.dry_run)?;
     Ok(())
+}
+
+fn main() {
+    let args = Args::parse();
+    let r = match args.cmd {
+        args::Command::Expand(_) => todo!(),
+        args::Command::Deploy(cmd) => run_deploy(cmd),
+    };
+    if let Err(e) = r {
+        eprintln!("{}", e);
+        exit(1);
+    }
 }
