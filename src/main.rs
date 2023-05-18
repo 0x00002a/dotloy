@@ -116,7 +116,7 @@ enum Error {
     TargetDoesNotExist(String),
 }
 
-fn init_logging() {
+fn init_logging(level: log::LevelFilter) {
     fn colour_for_level(level: log::Level) -> Color {
         match level {
             log::Level::Error => Color::Red,
@@ -126,26 +126,23 @@ fn init_logging() {
             log::Level::Trace => Color::White,
         }
     }
-    let actions = fern::Dispatch::new()
-        .filter(|meta| meta.target() == "actions")
-        .format(|out, msg, record| {
-            out.finish(format_args!(
-                "[action]: {}",
-                msg.to_string().color(colour_for_level(record.level()))
-            ));
-        });
-    let general = fern::Dispatch::new()
-        .filter(|m| m.target() != "actions")
-        .format(|out, msg, record| {
-            out.finish(format_args!(
-                "[{src}]: {msg}",
-                src = record.target(),
-                msg = msg.to_string().color(colour_for_level(record.level()))
-            ))
-        });
     fern::Dispatch::new()
-        .chain(general)
-        .chain(actions)
+        .level_for(env!("CARGO_PKG_NAME"), level)
+        .level(log::LevelFilter::Off)
+        .format(|out, msg, record| {
+            if record.target() == "dotloy::actions" {
+                out.finish(format_args!(
+                    "[action]: {}",
+                    msg.to_string().color(colour_for_level(record.level()))
+                ))
+            } else {
+                out.finish(format_args!(
+                    "[{src}]: {msg}",
+                    src = record.target(),
+                    msg = msg.to_string().color(colour_for_level(record.level()))
+                ))
+            }
+        })
         .chain(
             fern::Dispatch::new()
                 .level(log::LevelFilter::Error)
@@ -153,7 +150,7 @@ fn init_logging() {
         )
         .chain(
             fern::Dispatch::new()
-                .filter(|m| m.level() < log::Level::Error)
+                .filter(|m| m.level() > log::Level::Error)
                 .chain(std::io::stdout()),
         )
         .apply()
@@ -162,6 +159,7 @@ fn init_logging() {
 
 fn run() -> Result<()> {
     let args = Args::parse();
+    init_logging(args.log_level);
     let cfg_file = args.config.or_else(find_cfg_file);
     if let Some(p) = &cfg_file {
         if !p.exists() {
@@ -186,7 +184,6 @@ fn run() -> Result<()> {
 }
 
 fn main() {
-    init_logging();
     let r = run();
     if let Err(e) = r {
         log::error!("{}", e);

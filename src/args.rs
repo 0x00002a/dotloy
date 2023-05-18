@@ -10,6 +10,13 @@ pub struct Args {
         help = "Config file to use. If not provided defaults to dotloy.yaml in cwd"
     )]
     pub config: Option<std::path::PathBuf>,
+    #[arg(
+        long,
+        global = true,
+        help = "Level to use for logging",
+        default_value = "info"
+    )]
+    pub log_level: log::LevelFilter,
 }
 
 #[derive(Subcommand, Clone)]
