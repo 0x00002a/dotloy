@@ -75,6 +75,11 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>> {
             _ => None,
         };
         if let Some(var) = var {
+            if !strbuf.is_empty() {
+                let mut tmp = String::new();
+                std::mem::swap(&mut tmp, &mut strbuf);
+                tokens.push(Token::Str(tmp));
+            }
             tokens.push(Token::Variable(Variable::new(var)));
         } else {
             strbuf.push(chars[head]);
@@ -98,8 +103,7 @@ mod tests {
     use super::*;
     #[test]
     fn parse_with_equals_works() {
-        let s = r"
-SOME_VAR={{ t1 }}
+        let s = r"SOME_VAR={{ t1 }}
 export THING=$SOME_VAR";
         let tkns = tokenize(s).unwrap();
         assert_eq!(
@@ -109,9 +113,8 @@ export THING=$SOME_VAR";
                 Token::Variable(Variable::single("t1".to_string())),
                 Token::Str(
                     r"
-export THING=$SOME_VAR
-"
-                    .to_owned()
+export THING=$SOME_VAR"
+                        .to_owned()
                 )
             ]
         )
