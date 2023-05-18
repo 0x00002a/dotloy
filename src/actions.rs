@@ -55,7 +55,7 @@ impl Action {
                 match ty {
                     LinkType::Soft => Ok(symlink::symlink_auto(from, to)?),
                     LinkType::Hard => {
-                        assert!(to.is_file(), "tried to hardlink directory");
+                        assert!(from.is_file(), "tried to hardlink directory");
                         Ok(fs::hard_link(from, to)?)
                     }
                 }
@@ -245,13 +245,16 @@ impl Actions {
                 });
             } else {
                 acts.push(Action::Link {
-                    ty: target.link_type.unwrap_or_else(|| {
-                        if dst_path.is_dir() {
-                            LinkType::Soft
-                        } else {
-                            LinkType::Hard
-                        }
-                    }),
+                    ty: target
+                        .link_type
+                        .map(|l| Ok::<_, Error>(l))
+                        .unwrap_or_else(|| {
+                            Ok(if fs::canonicalize(&src_path)?.is_dir() {
+                                LinkType::Soft
+                            } else {
+                                LinkType::Hard
+                            })
+                        })?,
                     from: src_path,
                     to: dst_path,
                 });
