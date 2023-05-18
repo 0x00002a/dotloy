@@ -18,6 +18,12 @@ pub enum Command {
 pub struct ExpandCmd {
     #[arg(help = "File to expand")]
     pub target: std::path::PathBuf,
+    #[arg(
+        long,
+        short,
+        help = "Output to write to, writes to stdout if not provided"
+    )]
+    pub output: Option<std::path::PathBuf>,
 }
 #[derive(clap::Args, Clone)]
 pub struct DeployCmd {

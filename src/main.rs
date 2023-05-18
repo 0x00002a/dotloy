@@ -1,8 +1,12 @@
-use std::{io::BufReader, path::PathBuf, process::exit};
+use std::{
+    io::{BufReader, Write},
+    path::PathBuf,
+    process::exit,
+};
 
 use actions::Actions;
 use anyhow::anyhow;
-use args::{Args, DeployCmd};
+use args::{Args, DeployCmd, ExpandCmd};
 use clap::Parser;
 use template::{Context, Variable};
 
@@ -67,11 +71,31 @@ fn run_deploy(args: DeployCmd) -> anyhow::Result<()> {
     actions.run(&template_engine, args.dry_run)?;
     Ok(())
 }
+fn run_expand(cmd: ExpandCmd) -> anyhow::Result<()> {
+    let target = cmd.target;
+    if !target.exists() {
+        return Err(anyhow!(
+            "Expand target '{target}' does not exist",
+            target = target.to_string_lossy()
+        ));
+    }
+    let engine = default_parse_context();
+    let content = std::fs::read_to_string(target)?;
+    let rendered = engine.render(&content)?;
+    match cmd.output {
+        Some(p) => {
+            write!(std::fs::File::create(&p)?, "{}", rendered)?;
+        }
+        None => print!("{}", rendered),
+    }
+
+    Ok(())
+}
 
 fn main() {
     let args = Args::parse();
     let r = match args.cmd {
-        args::Command::Expand(_) => todo!(),
+        args::Command::Expand(cmd) => run_expand(cmd),
         args::Command::Deploy(cmd) => run_deploy(cmd),
     };
     if let Err(e) = r {
