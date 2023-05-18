@@ -36,13 +36,30 @@ enum Action {
 impl Action {
     fn run(&self, res: &mut ResourceStore) -> Result<()> {
         match self {
-            Action::Link { ty, from, to } => match ty {
-                LinkType::Soft => Ok(symlink::symlink_auto(from, to)?),
-                LinkType::Hard => {
-                    assert!(to.is_file(), "tried to hardlink directory");
-                    Ok(fs::hard_link(from, to)?)
+            Action::Link { ty, from, to } => {
+                if let Ok(m) = fs::symlink_metadata(to) {
+                    if !m.is_symlink() {
+                        return Err(Error::TargetExists {
+                            path: to.to_string_lossy().into_owned(),
+                        });
+                    } else if fs::canonicalize(to)? != fs::canonicalize(from)? {
+                        return Err(Error::TargetSymlinksDiffer {
+                            path: to.to_string_lossy().into_owned(),
+                            ours: fs::canonicalize(from)?.to_string_lossy().into_owned(),
+                            theirs: fs::canonicalize(to)?.to_string_lossy().into_owned(),
+                        });
+                    } else {
+                        return Ok(());
+                    }
                 }
-            },
+                match ty {
+                    LinkType::Soft => Ok(symlink::symlink_auto(from, to)?),
+                    LinkType::Hard => {
+                        assert!(to.is_file(), "tried to hardlink directory");
+                        Ok(fs::hard_link(from, to)?)
+                    }
+                }
+            }
             Action::Copy { from, to } => match from {
                 ResourceLocation::InMemory { id: fid } => match to {
                     ResourceLocation::InMemory { id: tid } => {
@@ -166,6 +183,14 @@ pub enum Error {
     #[cfg(not(test))]
     #[error("Source file does not exist: '{path}'")]
     SourceDoesNotExist { path: String },
+    #[error("Target file '{path}' already exists")]
+    TargetExists { path: String },
+    #[error("Target file '{path}' is already a symlink and its source is different to ours ('{ours}' vs '{theirs}')")]
+    TargetSymlinksDiffer {
+        path: String,
+        ours: String,
+        theirs: String,
+    },
 }
 
 #[derive(Clone, Debug)]
