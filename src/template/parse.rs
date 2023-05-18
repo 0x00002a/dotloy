@@ -108,7 +108,7 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>> {
                     head += len + 2;
                     Some(var)
                 }
-                Some(Err(e)) => return Err(e.add_offset(pos)),
+                Some(Err(e)) => return Err(e.add_offset((pos.0 + 2, pos.1))),
                 None => None,
             },
             _ => None,
