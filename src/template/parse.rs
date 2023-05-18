@@ -46,12 +46,19 @@ fn parse_template_inner(input: &[char]) -> Option<Result<(Vec<String>, usize)>> 
 }
 
 pub fn tokenize(input: &str) -> Result<Vec<Token>> {
+    if input.is_empty() {
+        return Ok(Default::default());
+    }
     let mut tokens = Vec::new();
     let mut head = 0;
     let mut strbuf = String::new();
     let chars = input.chars().collect::<Vec<_>>();
     while head < input.len() {
-        if head >= input.len().saturating_sub(1) {
+        if head >= input.len() {
+            break;
+        }
+        if head == input.len() - 1 {
+            strbuf.push(chars[head]);
             break;
         }
         let var = match chars[head..=head + 1].as_ref() {
