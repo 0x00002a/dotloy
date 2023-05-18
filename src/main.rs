@@ -6,7 +6,6 @@ use std::{
 };
 
 use actions::Actions;
-use anyhow::anyhow;
 use args::{Args, DeployCmd, ExpandCmd};
 use clap::Parser;
 use config::Root;
