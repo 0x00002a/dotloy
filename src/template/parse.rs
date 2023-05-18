@@ -55,9 +55,9 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>> {
             break;
         }
         let var = match chars[head..=head + 1].as_ref() {
-            ['{', '{'] => match parse_template_inner(&chars[head + 1..]) {
+            ['{', '{'] => match parse_template_inner(&chars[head + 2..]) {
                 Some(Ok((var, len))) => {
-                    head += len;
+                    head += len + 2;
                     Some(var)
                 }
                 Some(Err(e)) => return Err(e),
