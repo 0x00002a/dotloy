@@ -1,4 +1,7 @@
+use std::path::PathBuf;
+
 use args::Args;
+use clap::Parser;
 use template::{Context, Variable};
 
 mod actions;
@@ -31,7 +34,18 @@ fn default_parse_context() -> template::Context {
     ctx.append(xdg_context());
     ctx
 }
+fn find_cfg_file() -> Option<PathBuf> {
+    let path = std::env::current_dir()
+        .expect("failed to get cwd")
+        .join("dotloy.yaml");
+    if path.exists() {
+        Some(path)
+    } else {
+        None
+    }
+}
 
 fn main() {
-    println!("Hello, world!");
+    let args = Args::parse();
+    let cfg_file = args.config.or_else(find_cfg_file);
 }
