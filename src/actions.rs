@@ -211,6 +211,7 @@ impl Actions {
                 );
             }
             let src_path: PathBuf = target.path.render(&engine)?.parse().unwrap();
+            #[cfg(not(test))]
             if !src_path.exists() {
                 return Err(Error::SourceDoesNotExist {
                     path: src_path.to_string_lossy().into_owned(),

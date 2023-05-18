@@ -97,6 +97,26 @@ pub enum Token {
 mod tests {
     use super::*;
     #[test]
+    fn parse_with_equals_works() {
+        let s = r"
+SOME_VAR={{ t1 }}
+export THING=$SOME_VAR";
+        let tkns = tokenize(s).unwrap();
+        assert_eq!(
+            tkns.as_slice(),
+            &[
+                Token::Str("SOME_VAR=".to_owned()),
+                Token::Variable(Variable::single("t1".to_string())),
+                Token::Str(
+                    r"
+export THING=$SOME_VAR
+"
+                    .to_owned()
+                )
+            ]
+        )
+    }
+    #[test]
     fn parse_template_inner_parses_the_start_of_a_template() {
         let s = "some.txt }}h1";
         let cs = s.chars().collect::<Vec<_>>();
