@@ -14,7 +14,7 @@ enum ResourceLocation {
     Path(PathBuf),
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum Action {
     Link {
         ty: LinkType,
@@ -102,5 +102,58 @@ impl Actions {
             }
         }
         Ok(Self { acts, resources })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        actions::{Action, ResourceLocation},
+        default_parse_context,
+    };
+
+    use super::Actions;
+
+    #[test]
+    fn actions_with_template_does_copy() {
+        let cfg = serde_yaml::from_str(
+            r"
+                                       targets: [ { path: ./src.in, to: ./dst } ]
+        ",
+        )
+        .unwrap();
+        let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
+        let target = ResourceLocation::InMemory { id: 0 };
+        assert_eq!(
+            &acts.acts,
+            &[
+                Action::TemplateExpand {
+                    target: ResourceLocation::Path("./src.in".into()),
+                    output: target.clone()
+                },
+                Action::Copy {
+                    from: target.clone(),
+                    to: ResourceLocation::Path("./dst".into())
+                }
+            ]
+        )
+    }
+    #[test]
+    fn actions_on_link_only_expands_to_links() {
+        let cfg = serde_yaml::from_str(
+            r"
+                                       targets: [ { path: ./src, to: ./dst } ]
+        ",
+        )
+        .unwrap();
+        let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
+        assert_eq!(
+            &acts.acts,
+            &[Action::Link {
+                ty: crate::config::LinkType::Hard,
+                from: "./src".into(),
+                to: "./dst".into()
+            }]
+        )
     }
 }
