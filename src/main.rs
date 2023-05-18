@@ -70,7 +70,7 @@ fn run_deploy(args: DeployCmd) -> anyhow::Result<()> {
     let cfg_file = serde_yaml::from_reader(cfg_file)?;
     let template_engine = default_parse_context();
     let actions = Actions::from_config(&cfg_file, &template_engine)?;
-    actions.run(&template_engine, args.dry_run)?;
+    actions.run(args.dry_run)?;
     Ok(())
 }
 fn run_expand(cmd: ExpandCmd) -> anyhow::Result<()> {

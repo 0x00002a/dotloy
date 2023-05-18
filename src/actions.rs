@@ -33,13 +33,14 @@ enum Action {
         to: ResourceLocation,
     },
     TemplateExpand {
+        ctx: template::Context,
         target: ResourceLocation,
         output: ResourceLocation,
     },
 }
 
 impl Action {
-    fn run(&self, res: &mut ResourceStore, engine: &template::Context) -> Result<()> {
+    fn run(&self, res: &mut ResourceStore) -> Result<()> {
         match self {
             Action::Link { ty, from, to } => match ty {
                 LinkType::Soft => Ok(symlink::symlink_auto(from, to)?),
@@ -63,8 +64,12 @@ impl Action {
                     loc => Ok(res.set_content(loc, ResourceHandle::File(pf.to_owned()))?),
                 },
             },
-            Action::TemplateExpand { target, output } => {
-                let from = engine.render(&res.get_content(target)?)?;
+            Action::TemplateExpand {
+                ctx,
+                target,
+                output,
+            } => {
+                let from = ctx.render(&res.get_content(target)?)?;
                 res.set_content(&output, ResourceHandle::MemStr(from))?;
                 Ok(())
             }
@@ -92,7 +97,9 @@ impl std::fmt::Display for Action {
                 to = to.to_string_lossy(),
             )),
             Action::Copy { from, to } => f.write_fmt(format_args!("[{from}] -> [{to}]")),
-            Action::TemplateExpand { target, output } => write!(f, "expand {target} to {output}"),
+            Action::TemplateExpand { target, output, .. } => {
+                write!(f, "expand {target} to {output}")
+            }
         }
     }
 }
@@ -171,12 +178,12 @@ pub struct Actions {
 }
 
 impl Actions {
-    pub fn run(&self, engine: &template::Context, dry: bool) -> Result<()> {
+    pub fn run(&self, dry: bool) -> Result<()> {
         for action in &self.acts {
             let mut res = self.resources.clone();
             println!("{action}");
             if !dry {
-                action.run(&mut res, engine)?;
+                action.run(&mut res)?;
             }
         }
         Ok(())
@@ -215,6 +222,7 @@ impl Actions {
                 acts.push(Action::TemplateExpand {
                     target: src.clone(),
                     output: template_dst.clone(),
+                    ctx: engine,
                 });
                 acts.push(Action::Copy {
                     from: template_dst,
@@ -263,7 +271,8 @@ mod tests {
             &[
                 Action::TemplateExpand {
                     target: ResourceLocation::Path("./src.in".into()),
-                    output: target.clone()
+                    output: target.clone(),
+                    ctx: default_parse_context(),
                 },
                 Action::Copy {
                     from: target.clone(),

@@ -20,7 +20,7 @@ impl<T: ToString> Templated<T> {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Context {
     vars: HashMap<Variable, String>,
 }
