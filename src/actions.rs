@@ -1,6 +1,7 @@
 use std::{collections::HashMap, io::Write, path::PathBuf, rc::Rc};
 
 use serde::Deserialize;
+use thiserror::Error;
 
 use crate::{
     config::{self, LinkType},
@@ -54,6 +55,15 @@ impl ResourceStore {
         self.define(ResourceHandle::MemStr("".to_owned()))
     }
 }
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Template(#[from] template::Error),
+}
 
 #[derive(Clone)]
 pub struct Actions {
@@ -62,10 +72,7 @@ pub struct Actions {
 }
 
 impl Actions {
-    pub fn from_config(
-        cfg: &config::Root,
-        engine: &template::Context,
-    ) -> Result<Self, template::Error> {
+    pub fn from_config(cfg: &config::Root, engine: &template::Context) -> Result<Self> {
         let mut resources = ResourceStore::new();
         let mut acts = Vec::new();
         for target in &cfg.targets {
