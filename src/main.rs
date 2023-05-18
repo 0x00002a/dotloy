@@ -8,6 +8,7 @@ use std::{
 use actions::Actions;
 use args::{Args, DeployCmd, ExpandCmd};
 use clap::Parser;
+use colored::{Color, Colorize};
 use config::Root;
 use template::{Context, Variable};
 use thiserror::Error;
@@ -114,6 +115,51 @@ enum Error {
     #[error("Target does not exist '{0}'")]
     TargetDoesNotExist(String),
 }
+
+fn init_logging() {
+    fn colour_for_level(level: log::Level) -> Color {
+        match level {
+            log::Level::Error => Color::Red,
+            log::Level::Warn => Color::Yellow,
+            log::Level::Info => Color::Green,
+            log::Level::Debug => Color::BrightGreen,
+            log::Level::Trace => Color::White,
+        }
+    }
+    let actions = fern::Dispatch::new()
+        .filter(|meta| meta.target() == "actions")
+        .format(|out, msg, record| {
+            out.finish(format_args!(
+                "[action]: {}",
+                msg.to_string().color(colour_for_level(record.level()))
+            ));
+        });
+    let general = fern::Dispatch::new()
+        .filter(|m| m.target() != "actions")
+        .format(|out, msg, record| {
+            out.finish(format_args!(
+                "[{src}]: {msg}",
+                src = record.target(),
+                msg = msg.to_string().color(colour_for_level(record.level()))
+            ))
+        });
+    fern::Dispatch::new()
+        .chain(general)
+        .chain(actions)
+        .chain(
+            fern::Dispatch::new()
+                .level(log::LevelFilter::Error)
+                .chain(std::io::stderr()),
+        )
+        .chain(
+            fern::Dispatch::new()
+                .filter(|m| m.level() < log::Level::Error)
+                .chain(std::io::stdout()),
+        )
+        .apply()
+        .expect("failed to init logging");
+}
+
 fn run() -> Result<()> {
     let args = Args::parse();
     let cfg_file = args.config.or_else(find_cfg_file);
@@ -139,11 +185,11 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
+fn main() {
+    init_logging();
     let r = run();
     if let Err(e) = r {
-        eprintln!("{}", e);
+        log::error!("{}", e);
         exit(1);
     }
-    Ok(())
 }

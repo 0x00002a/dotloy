@@ -7,7 +7,10 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.2.7", features = ["derive"] }
+colored = "2.0.0"
 directories = "5.0.1"
+fern = { version = "0.6.2", features = ["colored"] }
+log = "0.4.17"
 serde = { version = "1.0.163", features = ["derive"] }
 serde_yaml = "0.9.21"
 symlink = "0.1.0"
