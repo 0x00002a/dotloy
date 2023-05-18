@@ -203,9 +203,13 @@ impl Actions {
     pub fn run(&self, dry: bool) -> Result<()> {
         let mut res = self.resources.clone();
         for action in &self.acts {
-            println!("{action}");
             if !dry {
-                action.run(&mut res)?;
+                match action.run(&mut res) {
+                    Ok(_) => log::info!("{action}"),
+                    Err(e) => log::error!("{action} failed. reason: {}", e),
+                }
+            } else {
+                log::info!("{action}");
             }
         }
         Ok(())
