@@ -1,4 +1,5 @@
-use std::{fs, io::Write, path::PathBuf};
+use fs_err as fs;
+use std::{io::Write, path::PathBuf};
 
 use serde::Deserialize;
 use thiserror::Error;
