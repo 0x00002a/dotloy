@@ -233,6 +233,11 @@ impl Actions {
             let dst_path: PathBuf = target.target_location.render(&engine)?.parse().unwrap();
             let src = ResourceLocation::Path(src_path.clone());
             let dst = ResourceLocation::Path(dst_path.clone());
+            if let Some(p) = dst_path.parent() {
+                if !p.exists() {
+                    acts.push(Action::MkDir { path: p.to_owned() });
+                }
+            }
             if src_path.extension() == Some("in".as_ref()) {
                 let template_dst = resources.define_mem();
                 acts.push(Action::TemplateExpand {
@@ -323,6 +328,30 @@ mod tests {
         )
     }
 
+    #[test]
+    fn trying_to_link_into_non_existant_dirs_creates_needed_ones() {
+        let mut cfg: Root = Default::default();
+        let tgt = Target::new(
+            "src/actions.rs".to_string(),
+            "/home/nonexistant/hello.txt".to_string(),
+        );
+        cfg.targets.push(tgt);
+
+        let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
+        assert_eq!(
+            &acts.acts,
+            &[
+                Action::MkDir {
+                    path: "/home/nonexistant".into(),
+                },
+                Action::Link {
+                    ty: crate::config::LinkType::Hard,
+                    from: "src/actions.rs".into(),
+                    to: "/home/nonexistant/hello.txt".into()
+                }
+            ]
+        )
+    }
     #[test]
     fn variable_expansions_are_placed_in_target_and_can_include_other_expands() {
         let mut cfg: Root = Default::default();
