@@ -54,7 +54,7 @@ impl Action {
                     }
                 }
                 match ty {
-                    LinkType::Soft => Ok(symlink::symlink_auto(from, to)?),
+                    LinkType::Soft => Ok(symlink::symlink_auto(fs::canonicalize(from)?, to)?),
                     LinkType::Hard => {
                         assert!(from.is_file(), "tried to hardlink directory");
                         Ok(fs::hard_link(from, to)?)
