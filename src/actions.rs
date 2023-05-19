@@ -27,6 +27,9 @@ enum Action {
         from: ResourceLocation,
         to: ResourceLocation,
     },
+    MkDir {
+        path: PathBuf,
+    },
     TemplateExpand {
         ctx: template::Context,
         target: ResourceLocation,
@@ -37,6 +40,7 @@ enum Action {
 impl Action {
     fn run(&self, res: &mut ResourceStore) -> Result<()> {
         match self {
+            Action::MkDir { path } => Ok(fs::create_dir_all(path)?),
             Action::Link { ty, from, to } => {
                 if let Ok(m) = fs::symlink_metadata(to) {
                     if !m.is_symlink() {
@@ -99,6 +103,9 @@ impl std::fmt::Display for ResourceLocation {
 impl std::fmt::Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Action::MkDir { path } => {
+                f.write_fmt(format_args!("mkdir {path}", path = path.to_string_lossy()))
+            }
             Action::Link { ty, from, to } => f.write_fmt(format_args!(
                 "{from} -> {to} [{typ}]",
                 typ = match ty {
@@ -272,11 +279,15 @@ impl Actions {
 
 #[cfg(test)]
 mod tests {
+    use fs_err as fs;
+
+    use tempdir::TempDir;
+
     use crate::{
         actions::{Action, ResourceLocation},
         config::{Root, Target},
         default_parse_context,
-        template::Templated,
+        template::{Context, Templated, Variable},
         xdg_context,
     };
 
@@ -311,7 +322,7 @@ mod tests {
     #[test]
     fn variable_expansions_on_root_are_placed_in_config() {
         let mut cfg: Root = Default::default();
-        let tgt = Target::new("{{ config.t1 }}".to_string(), "dst".to_string());
+        let tgt = Target::new("src/actions.rs".to_string(), "{{ config.t1 }}".to_string());
         let t1val = "{{ xdg.home }}/t".to_owned();
         cfg.variables
             .insert("t1".to_owned(), Templated::new(t1val.clone()));
@@ -322,8 +333,8 @@ mod tests {
             &acts.acts,
             &[Action::Link {
                 ty: crate::config::LinkType::Hard,
-                from: xdg_context().render(&t1val).unwrap().into(),
-                to: "dst".into()
+                to: xdg_context().render(&t1val).unwrap().into(),
+                from: "src/actions.rs".into()
             }]
         )
     }
@@ -355,7 +366,7 @@ mod tests {
     #[test]
     fn variable_expansions_are_placed_in_target_and_can_include_other_expands() {
         let mut cfg: Root = Default::default();
-        let mut tgt = Target::new("{{ target.t1 }}".to_string(), "dst".to_string());
+        let mut tgt = Target::new("src/actions.rs".to_string(), "{{ target.t1 }}".to_string());
         let t1val = "{{ xdg.home }}/t".to_owned();
         tgt.variables
             .insert("t1".to_owned(), Templated::new(t1val.clone()));
@@ -366,8 +377,8 @@ mod tests {
             &acts.acts,
             &[Action::Link {
                 ty: crate::config::LinkType::Hard,
-                from: xdg_context().render(&t1val).unwrap().into(),
-                to: "dst".into()
+                to: xdg_context().render(&t1val).unwrap().into(),
+                from: "src/actions.rs".into()
             }]
         )
     }
@@ -375,7 +386,7 @@ mod tests {
     fn actions_on_link_only_expands_to_links() {
         let cfg = serde_yaml::from_str(
             r"
-                                       targets: [ { from: ./src, to: ./dst } ]
+                                       targets: [ { from: src/actions.rs, to: ./dst } ]
         ",
         )
         .unwrap();
@@ -384,9 +395,31 @@ mod tests {
             &acts.acts,
             &[Action::Link {
                 ty: crate::config::LinkType::Hard,
-                from: "./src".into(),
+                from: "src/actions.rs".into(),
                 to: "./dst".into()
             }]
         )
+    }
+    fn test_ctx_with_dir(prefix: &str) -> (Context, tempdir::TempDir) {
+        let dir = TempDir::new(prefix).unwrap();
+        let ns = Variable::single("test".to_string());
+        let ctx = default_parse_context()
+            .with_define(
+                ns.with_child("dir"),
+                dir.path().to_string_lossy().into_owned(),
+            )
+            .with_define(ns.with_child("data"), "./test_data".to_owned());
+        (ctx, dir)
+    }
+
+    #[test]
+    fn softlinks_work() {
+        const DATA: &'static str = include_str!("../test_data/softlinks.yaml");
+        let cfg: Root = serde_yaml::from_str(DATA).unwrap();
+        let (ctx, dir) = test_ctx_with_dir("softlinks");
+        let acts = Actions::from_config(&cfg, &ctx).unwrap();
+        acts.run(false).unwrap();
+        let created = fs::symlink_metadata(dir.path().join("softlink-folder")).unwrap();
+        assert!(created.is_symlink());
     }
 }
