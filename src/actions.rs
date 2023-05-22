@@ -6,8 +6,9 @@ use thiserror::Error;
 
 use crate::{
     config::{self, LinkType},
-    template::{self, Variable},
+    define_variables, vars,
 };
+use handybars::{self, Variable};
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
 #[serde(untagged)]
@@ -31,7 +32,7 @@ enum Action {
         path: PathBuf,
     },
     TemplateExpand {
-        ctx: template::Context,
+        ctx: handybars::Context<'static>,
         target: ResourceLocation,
         output: ResourceLocation,
     },
@@ -187,7 +188,7 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
-    Template(#[from] template::Error),
+    Template(#[from] handybars::Error),
     #[cfg(not(test))]
     #[error("Source file does not exist: '{path}'")]
     SourceDoesNotExist { path: String },
@@ -222,14 +223,14 @@ impl Actions {
         }
         Ok(())
     }
-    pub fn from_config(cfg: &config::Root, engine: &template::Context) -> Result<Self> {
+    pub fn from_config(cfg: &config::Root, engine: &handybars::Context<'static>) -> Result<Self> {
         let mut resources = ResourceStore::new();
         let mut acts = Vec::new();
         let mut engine = engine.clone();
-        engine.add_defines_with_namespace(Variable::config_level(), cfg.variables.iter())?;
+        define_variables(&mut engine, &vars::config_level(), cfg.variables.iter())?;
         for target in &cfg.targets {
             let mut engine = engine.clone();
-            engine.add_defines_with_namespace(Variable::target_level(), target.variables.iter())?;
+            define_variables(&mut engine, &vars::target_level(), target.variables.iter())?;
             let src_path: PathBuf = target.path.render(&engine)?.parse().unwrap();
             #[cfg(not(test))]
             if !src_path.exists() {
@@ -286,10 +287,9 @@ mod tests {
     use crate::{
         actions::{Action, ResourceLocation},
         config::{Root, Target},
-        default_parse_context,
-        template::{Context, Templated, Variable},
-        xdg_context,
+        default_parse_context, xdg_context, Templated,
     };
+    use handybars::{Context, Variable};
 
     use super::Actions;
 
@@ -402,13 +402,13 @@ mod tests {
     }
     fn test_ctx_with_dir(prefix: &str) -> (Context, tempdir::TempDir) {
         let dir = TempDir::new(prefix).unwrap();
-        let ns = Variable::single("test".to_string());
-        let ctx = default_parse_context()
-            .with_define(
-                ns.with_child("dir"),
-                dir.path().to_string_lossy().into_owned(),
-            )
-            .with_define(ns.with_child("data"), "./test_data".to_owned());
+        let ns = Variable::single("test");
+        let ctx = default_parse_context().with_define(
+            ns,
+            handybars::Object::new()
+                .with_property("dir", dir.path().to_string_lossy())
+                .with_property("data", "./test_data"),
+        );
         (ctx, dir)
     }
 

@@ -10,42 +10,52 @@ use args::{Args, DeployCmd, ExpandCmd};
 use clap::Parser;
 use colored::{Color, Colorize};
 use config::Root;
-use template::{Context, Variable};
+use handybars::{Context, Object, Variable};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 mod actions;
 mod args;
 mod config;
-mod template;
 
-fn xdg_context() -> template::Context {
-    let xdg = Variable::single("xdg".to_owned());
-    let local = xdg.with_child("local");
-    let dirs = directories::BaseDirs::new().expect("failed to get dirs on system");
+mod vars {
+    use handybars::Variable;
 
-    Context::new()
-        .with_define(
-            xdg.with_child("home"),
-            dirs.home_dir().to_string_lossy().to_string(),
-        )
-        .with_define(
-            xdg.with_child("config"),
-            dirs.config_dir().to_string_lossy().to_string(),
-        )
-        .with_define(
-            local.with_child("config"),
-            dirs.config_local_dir().to_string_lossy().to_string(),
-        )
+    pub fn target_level() -> Variable<'static> {
+        Variable::single("target")
+    }
+    pub fn config_level() -> Variable<'static> {
+        Variable::single("config")
+    }
 }
 
-fn default_parse_context() -> template::Context {
-    let mut ctx = template::Context::new();
+fn xdg_context() -> Context<'static> {
+    let xdg = Variable::single("xdg".to_owned());
+    let dirs = directories::BaseDirs::new().expect("failed to get dirs on system");
+
+    Context::new().with_define(
+        xdg,
+        Object::new()
+            .with_property("home", dirs.home_dir().to_string_lossy().into_owned())
+            .with_property("config", dirs.config_dir().to_string_lossy().into_owned())
+            .with_property(
+                "local",
+                Object::new().with_property(
+                    "config",
+                    dirs.config_local_dir().to_string_lossy().into_owned(),
+                ),
+            ),
+    )
+}
+
+fn default_parse_context() -> Context<'static> {
+    let mut ctx = Context::new();
     ctx.define(
         Variable::single("cwd".to_string()),
         std::env::current_dir()
             .unwrap()
             .to_string_lossy()
-            .to_string(),
+            .into_owned(),
     );
     ctx.append(xdg_context());
     ctx
@@ -60,6 +70,37 @@ fn find_cfg_file() -> Option<PathBuf> {
         None
     }
 }
+
+#[repr(transparent)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Templated<T> {
+    inner: T,
+}
+impl<T> Templated<T> {
+    pub fn new(inner: T) -> Self {
+        Self { inner }
+    }
+}
+impl Templated<String> {
+    pub fn render(&self, ctx: &Context) -> Result<String, handybars::Error> {
+        ctx.render(&self.inner)
+    }
+}
+
+fn define_variables<'a, 'b>(
+    on: &mut Context<'b>,
+    namespace: &Variable<'b>,
+    vars: impl Iterator<Item = (&'a String, &'a Templated<String>)>,
+) -> Result<(), handybars::Error> {
+    for (var, val) in vars {
+        on.define(
+            namespace.clone().join(var.parse()?),
+            handybars::Value::String(val.render(on)?.into()),
+        );
+    }
+    Ok(())
+}
+
 fn run_deploy(args: DeployCmd, cfg_file: &Root) -> Result<()> {
     let template_engine = default_parse_context();
     let actions = Actions::from_config(&cfg_file, &template_engine)?;
@@ -75,14 +116,14 @@ fn run_expand(cmd: ExpandCmd, cfg: Option<&Root>) -> Result<()> {
     }
     let mut engine = default_parse_context();
     if let Some(cfg) = cfg {
-        engine.add_defines_with_namespace(Variable::config_level(), cfg.variables.iter())?;
+        define_variables(&mut engine, &vars::config_level(), cfg.variables.iter())?;
         if let Some(target) = cfg.targets.iter().find(|t| {
             t.path
                 .render(&engine)
                 .map(|p| &p == cmd.target.to_string_lossy().as_ref())
                 .unwrap_or(false)
         }) {
-            engine.add_defines_with_namespace(Variable::target_level(), target.variables.iter())?;
+            define_variables(&mut engine, &vars::target_level(), target.variables.iter())?;
         }
     }
     let content = std::fs::read_to_string(target)?;
@@ -111,7 +152,7 @@ enum Error {
     #[error(transparent)]
     Action(#[from] actions::Error),
     #[error(transparent)]
-    Template(#[from] template::Error),
+    Template(#[from] handybars::Error),
     #[error("Target does not exist '{0}'")]
     TargetDoesNotExist(String),
 }

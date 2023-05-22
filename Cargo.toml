@@ -13,6 +13,7 @@ colored = "2.0.0"
 directories = "5.0.1"
 fern = { version = "0.6.2", features = ["colored"] }
 fs-err = "2.9.0"
+handybars = { git = "https://github.com/0x00002a/handybars.git", version = "0.2.0" }
 log = "0.4.17"
 serde = { version = "1.0.163", features = ["derive"] }
 serde_yaml = "0.9.21"

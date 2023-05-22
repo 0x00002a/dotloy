@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
+use super::Templated;
 use serde::Deserialize;
-
-use crate::template::Templated;
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Default)]
 pub struct Root {
