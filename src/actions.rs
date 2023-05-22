@@ -8,7 +8,7 @@ use crate::{
     config::{self, LinkType},
     define_variables, vars,
 };
-use handybars::{self, Variable};
+use handybars::{self};
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
 #[serde(untagged)]
@@ -75,9 +75,10 @@ impl Action {
                     loc => Ok(res.set_content(loc, res.get(*fid).clone())?),
                 },
                 ResourceLocation::Path(pf) => match to {
-                    ResourceLocation::Path(pt) => Ok({
+                    ResourceLocation::Path(pt) => {
                         fs::copy(pf, pt)?;
-                    }),
+                        Ok(())
+                    }
                     loc => Ok(res.set_content(loc, ResourceHandle::File(pf.to_owned()))?),
                 },
             },
@@ -87,7 +88,7 @@ impl Action {
                 output,
             } => {
                 let from = ctx.render(&res.get_content(target)?)?;
-                res.set_content(&output, ResourceHandle::MemStr(from))?;
+                res.set_content(output, ResourceHandle::MemStr(from))?;
                 Ok(())
             }
         }
@@ -164,7 +165,10 @@ impl ResourceStore {
         value: ResourceHandle,
     ) -> std::io::Result<()> {
         match target {
-            ResourceLocation::InMemory { id } => Ok(self.set(*id, value)),
+            ResourceLocation::InMemory { id } => {
+                self.set(*id, value);
+                Ok(())
+            }
             ResourceLocation::Path(p) => {
                 write!(fs::File::create(p)?, "{}", value.content()?)
             }
@@ -259,16 +263,13 @@ impl Actions {
                 });
             } else {
                 acts.push(Action::Link {
-                    ty: target
-                        .link_type
-                        .map(|l| Ok::<_, Error>(l))
-                        .unwrap_or_else(|| {
-                            Ok(if fs::canonicalize(&src_path)?.is_dir() {
-                                LinkType::Soft
-                            } else {
-                                LinkType::Hard
-                            })
-                        })?,
+                    ty: target.link_type.map(Ok::<_, Error>).unwrap_or_else(|| {
+                        Ok(if fs::canonicalize(&src_path)?.is_dir() {
+                            LinkType::Soft
+                        } else {
+                            LinkType::Hard
+                        })
+                    })?,
                     from: src_path,
                     to: dst_path,
                 });
@@ -312,7 +313,7 @@ mod tests {
                     ctx: default_parse_context(),
                 },
                 Action::Copy {
-                    from: target.clone(),
+                    from: target,
                     to: ResourceLocation::Path("./dst".into())
                 }
             ]
@@ -414,7 +415,7 @@ mod tests {
 
     #[test]
     fn softlinks_work() {
-        const DATA: &'static str = include_str!("../test_data/softlinks.yaml");
+        const DATA: &str = include_str!("../test_data/softlinks.yaml");
         let cfg: Root = serde_yaml::from_str(DATA).unwrap();
         let (ctx, dir) = test_ctx_with_dir("softlinks");
         let acts = Actions::from_config(&cfg, &ctx).unwrap();

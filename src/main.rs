@@ -101,7 +101,7 @@ fn define_variables<'a, 'b>(
 
 fn run_deploy(args: DeployCmd, cfg_file: &Root) -> Result<()> {
     let template_engine = default_parse_context();
-    let actions = Actions::from_config(&cfg_file, &template_engine)?;
+    let actions = Actions::from_config(cfg_file, &template_engine)?;
     actions.run(args.dry_run)?;
     Ok(())
 }
@@ -118,7 +118,7 @@ fn run_expand(cmd: ExpandCmd, cfg: Option<&Root>) -> Result<()> {
         if let Some(target) = cfg.targets.iter().find(|t| {
             t.path
                 .render(&engine)
-                .map(|p| &p == cmd.target.to_string_lossy().as_ref())
+                .map(|p| p == cmd.target.to_string_lossy().as_ref())
                 .unwrap_or(false)
         }) {
             define_variables(&mut engine, &vars::target_level(), target.variables.iter())?;
@@ -128,7 +128,7 @@ fn run_expand(cmd: ExpandCmd, cfg: Option<&Root>) -> Result<()> {
     let rendered = engine.render(&content)?;
     match cmd.output {
         Some(p) => {
-            write!(std::fs::File::create(&p)?, "{}", rendered)?;
+            write!(std::fs::File::create(p)?, "{}", rendered)?;
         }
         None => print!("{}", rendered),
     }
@@ -213,7 +213,7 @@ fn run() -> Result<()> {
     let cfg_file = cfg_file
         .map(|p| Ok::<_, Error>(BufReader::new(std::fs::File::open(p)?)))
         .transpose()?
-        .map(|f| serde_yaml::from_reader(f))
+        .map(serde_yaml::from_reader)
         .transpose()?;
     match args.cmd {
         args::Command::Expand(cmd) => run_expand(cmd, cfg_file.as_ref()),
