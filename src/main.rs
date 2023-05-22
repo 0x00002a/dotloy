@@ -73,17 +73,15 @@ fn find_cfg_file() -> Option<PathBuf> {
 
 #[repr(transparent)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Templated<T> {
-    inner: T,
-}
+pub struct Templated<T>(T);
 impl<T> Templated<T> {
     pub fn new(inner: T) -> Self {
-        Self { inner }
+        Self(inner)
     }
 }
 impl Templated<String> {
     pub fn render(&self, ctx: &Context) -> Result<String, handybars::Error> {
-        ctx.render(&self.inner)
+        ctx.render(&self.0)
     }
 }
 
