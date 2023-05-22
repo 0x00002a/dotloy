@@ -406,7 +406,7 @@ mod tests {
         let ctx = default_parse_context().with_define(
             ns,
             handybars::Object::new()
-                .with_property("dir", dir.path().to_string_lossy())
+                .with_property("dir", dir.path().to_string_lossy().into_owned())
                 .with_property("data", "./test_data"),
         );
         (ctx, dir)
