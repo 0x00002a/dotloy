@@ -25,6 +25,7 @@ to whatever `var` is set to. Namespaces are done with `.`.
 - `xdg.`: Namespace for xdg standard paths
   - `home`: Home directory
   - `config`: Top level config dir, same on linux as `local.config` but on windows it uses `/Roaming` rather than `/Local`
+  - `exec`: Local executable file directory. Note: Currently only available on Linux
   - `local.`: Namespace for local xdg paths
     - `config`: Config path, only differs on windows
 
