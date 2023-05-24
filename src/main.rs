@@ -116,14 +116,22 @@ fn run_expand(cmd: ExpandCmd, cfg: Option<&Root>) -> Result<()> {
     }
     let mut engine = default_parse_context();
     if let Some(cfg) = cfg {
-        define_variables(&mut engine, &vars::config_level(), cfg.variables.iter())?;
+        define_variables(
+            &mut engine,
+            &vars::config_level(),
+            cfg.shared.variables.iter(),
+        )?;
         if let Some(target) = cfg.targets.iter().find(|t| {
             t.path
                 .render(&engine)
                 .map(|p| p == cmd.target.to_string_lossy().as_ref())
                 .unwrap_or(false)
         }) {
-            define_variables(&mut engine, &vars::target_level(), target.variables.iter())?;
+            define_variables(
+                &mut engine,
+                &vars::target_level(),
+                target.shared.variables.iter(),
+            )?;
         }
     }
     let content = std::fs::read_to_string(target)?;

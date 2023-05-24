@@ -231,10 +231,18 @@ impl Actions {
         let mut resources = ResourceStore::new();
         let mut acts = Vec::new();
         let mut engine = engine.clone();
-        define_variables(&mut engine, &vars::config_level(), cfg.variables.iter())?;
+        define_variables(
+            &mut engine,
+            &vars::config_level(),
+            cfg.shared.variables.iter(),
+        )?;
         for target in &cfg.targets {
             let mut engine = engine.clone();
-            define_variables(&mut engine, &vars::target_level(), target.variables.iter())?;
+            define_variables(
+                &mut engine,
+                &vars::target_level(),
+                target.shared.variables.iter(),
+            )?;
             let src_path: PathBuf = target.path.render(&engine)?.parse().unwrap();
             #[cfg(not(test))]
             if !src_path.exists() {
@@ -325,7 +333,8 @@ mod tests {
         let mut cfg: Root = Default::default();
         let tgt = Target::new("src/actions.rs".to_string(), "{{ config.t1 }}".to_string());
         let t1val = "{{ xdg.home }}/t".to_owned();
-        cfg.variables
+        cfg.shared
+            .variables
             .insert("t1".to_owned(), Templated::new(t1val.clone()));
         cfg.targets.push(tgt);
 
@@ -369,7 +378,8 @@ mod tests {
         let mut cfg: Root = Default::default();
         let mut tgt = Target::new("src/actions.rs".to_string(), "{{ target.t1 }}".to_string());
         let t1val = "{{ xdg.home }}/t".to_owned();
-        tgt.variables
+        tgt.shared
+            .variables
             .insert("t1".to_owned(), Templated::new(t1val.clone()));
         cfg.targets.push(tgt);
 
