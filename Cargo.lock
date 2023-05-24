@@ -253,7 +253,8 @@ dependencies = [
 [[package]]
 name = "handybars"
 version = "0.2.0"
-source = "git+https://github.com/0x00002a/handybars.git#f5d75292985c35b94fb13fe552cc2047f54dd77a"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78fe97d68ff422bfffc848b71091e7051c323eee6f24d4c0d3eb57f6c44d5f60"
 
 [[package]]
 name = "hashbrown"
