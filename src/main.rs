@@ -30,22 +30,24 @@ mod vars {
 }
 
 fn xdg_context() -> Context<'static> {
-    let xdg = Variable::single("xdg".to_owned());
     let dirs = directories::BaseDirs::new().expect("failed to get dirs on system");
 
-    Context::new().with_define(
-        xdg,
-        Object::new()
-            .with_property("home", dirs.home_dir().to_string_lossy().into_owned())
-            .with_property("config", dirs.config_dir().to_string_lossy().into_owned())
-            .with_property(
-                "local",
-                Object::new().with_property(
-                    "config",
-                    dirs.config_local_dir().to_string_lossy().into_owned(),
-                ),
+    let mut xdg = Object::new()
+        .with_property("home", dirs.home_dir().to_string_lossy().into_owned())
+        .with_property("config", dirs.config_dir().to_string_lossy().into_owned())
+        .with_property(
+            "local",
+            Object::new().with_property(
+                "config",
+                dirs.config_local_dir().to_string_lossy().into_owned(),
             ),
-    )
+        );
+    // TODO: This will give an unhelpful variable not defined error on non-linux
+    // maybe intercept the error from handybars for this variable and provide our own?
+    if let Some(dir) = dirs.executable_dir() {
+        xdg.add_property("exec", dir.to_string_lossy().into_owned());
+    }
+    Context::new().with_define(Variable::single("xdg".to_owned()), xdg)
 }
 
 fn default_parse_context() -> Context<'static> {
