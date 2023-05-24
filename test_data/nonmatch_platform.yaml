@@ -1,0 +1,4 @@
+targets:
+  - from: ./src/actions.rs
+    to: ./src
+    runs_on: "test"

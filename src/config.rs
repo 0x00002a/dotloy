@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use crate::define_variables;
-
 use super::Templated;
 use serde::Deserialize;
 
@@ -21,6 +19,10 @@ pub enum Platform {
     #[serde(rename = "macos")]
     MacOs,
     Linux,
+    /// Testing platform that will never be matched by the current one
+    #[cfg(test)]
+    #[doc(hidden)]
+    Test,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
@@ -75,11 +77,21 @@ impl Target {
 }
 
 impl MultiScopedOptions {
-    pub fn check_platform_supported(&self, target: Platform) -> bool {
+    pub fn is_platform_supported(&self, target: Platform) -> bool {
         match &self.runs_on {
             Some(OneOrMany::One(p)) => *p == target,
             Some(OneOrMany::Many(ps)) => ps.iter().any(|p| *p == target),
             None => true,
+        }
+    }
+}
+impl Platform {
+    pub fn current() -> Option<Self> {
+        match std::env::consts::OS {
+            "linux" => Some(Self::Linux),
+            "macos" => Some(Self::MacOs),
+            "windows" => Some(Self::Windows),
+            _ => None,
         }
     }
 }

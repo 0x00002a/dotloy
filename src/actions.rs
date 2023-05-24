@@ -5,7 +5,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    config::{self, LinkType},
+    config::{self, LinkType, Platform},
     define_variables, vars,
 };
 use handybars::{self};
@@ -204,6 +204,10 @@ pub enum Error {
         ours: String,
         theirs: String,
     },
+    #[error("This config does not support the current platform")]
+    ConfigDoesNotSupportPlatform,
+    #[error("Terribly sorry, but dotloy doesn't support this platform/os")]
+    UnsupportedPlatform,
 }
 
 #[derive(Clone, Debug)]
@@ -231,12 +235,20 @@ impl Actions {
         let mut resources = ResourceStore::new();
         let mut acts = Vec::new();
         let mut engine = engine.clone();
+        let curr_os = Platform::current().ok_or(Error::UnsupportedPlatform)?;
+        if !cfg.shared.is_platform_supported(curr_os) {
+            return Err(Error::ConfigDoesNotSupportPlatform);
+        }
         define_variables(
             &mut engine,
             &vars::config_level(),
             cfg.shared.variables.iter(),
         )?;
         for target in &cfg.targets {
+            if !target.shared.is_platform_supported(curr_os) {
+                log::info!("skipping target that deploys '{tname}' since it doesn't support the current platform", tname = target.path.0);
+                continue;
+            }
             let mut engine = engine.clone();
             define_variables(
                 &mut engine,
@@ -421,6 +433,15 @@ mod tests {
                 .with_property("data", "./test_data"),
         );
         (ctx, dir)
+    }
+
+    #[test]
+    fn non_matching_platform_causes_target_to_be_skipped() {
+        const DATA: &str = include_str!("../test_data/nonmatch_platform.yaml");
+        let cfg: Root = serde_yaml::from_str(DATA).unwrap();
+        let ctx = default_parse_context();
+        let acts = Actions::from_config(&cfg, &ctx).unwrap();
+        assert_eq!(acts.acts.as_slice(), &[]);
     }
 
     #[test]
