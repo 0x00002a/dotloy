@@ -193,7 +193,6 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Template(#[from] handybars::Error),
-    #[cfg(not(test))]
     #[error("Source file does not exist: '{path}'")]
     SourceDoesNotExist { path: String },
     #[error("Target file '{path}' already exists")]
@@ -256,7 +255,6 @@ impl Actions {
                 target.shared.variables.iter(),
             )?;
             let src_path: PathBuf = target.path.render(&engine)?.parse().unwrap();
-            #[cfg(not(test))]
             if !src_path.exists() {
                 return Err(Error::SourceDoesNotExist {
                     path: src_path.to_string_lossy().into_owned(),
@@ -308,7 +306,7 @@ mod tests {
     use crate::{
         actions::{Action, ResourceLocation},
         config::{Root, Target},
-        default_parse_context, xdg_context, Templated,
+        default_parse_context, test_data_path, xdg_context, Templated,
     };
     use handybars::{Context, Variable};
 
@@ -316,25 +314,28 @@ mod tests {
 
     #[test]
     fn actions_with_template_does_copy() {
-        let cfg = serde_yaml::from_str(
-            r"
-                                       targets: [ { from: ./src.in, to: ./dst } ]
-        ",
-        )
-        .unwrap();
+        let src = test_data_path().join("actions_with_test_data.in");
+        let dst = test_data_path().join("actions_with_test_data");
+        let mut cfg = Root::default();
+        cfg.targets.push(Target {
+            path: Templated(src.to_string_lossy().into_owned()),
+            target_location: Templated(dst.to_string_lossy().into_owned()),
+            shared: Default::default(),
+            link_type: None,
+        });
         let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
         let target = ResourceLocation::InMemory { id: 0 };
         assert_eq!(
             &acts.acts,
             &[
                 Action::TemplateExpand {
-                    target: ResourceLocation::Path("./src.in".into()),
+                    target: ResourceLocation::Path(src),
                     output: target.clone(),
                     ctx: default_parse_context(),
                 },
                 Action::Copy {
                     from: target,
-                    to: ResourceLocation::Path("./dst".into())
+                    to: ResourceLocation::Path(dst)
                 }
             ]
         )

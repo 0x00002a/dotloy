@@ -164,6 +164,10 @@ enum Error {
     #[error("Target does not exist '{0}'")]
     TargetDoesNotExist(String),
 }
+#[cfg(test)]
+fn test_data_path() -> &'static std::path::Path {
+    "./test_data".as_ref()
+}
 
 fn init_logging(level: log::LevelFilter) {
     fn colour_for_level(level: log::Level) -> Color {
