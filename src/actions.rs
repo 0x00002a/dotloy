@@ -268,7 +268,10 @@ impl Actions {
                     acts.push(Action::MkDir { path: p.to_owned() });
                 }
             }
-            if src_path.extension() == Some("in".as_ref()) {
+            let is_template = target
+                .is_template
+                .unwrap_or_else(|| src_path.extension() == Some("in".as_ref()));
+            if is_template {
                 let template_dst = resources.define_mem();
                 acts.push(Action::TemplateExpand {
                     target: src.clone(),
@@ -299,6 +302,7 @@ impl Actions {
 
 #[cfg(test)]
 mod tests {
+    use assert_matches::assert_matches;
     use fs_err as fs;
 
     use tempdir::TempDir;
@@ -313,16 +317,29 @@ mod tests {
     use super::Actions;
 
     #[test]
+    fn explicit_is_template_causes_expansion_even_if_not_ending_with_in() {
+        let src = test_data_path().join("softlinks.yaml");
+        let dst = test_data_path().join("softlinks-out.yaml");
+        let mut cfg = Root::default();
+        let mut tgt = Target::new(
+            src.to_string_lossy().into_owned(),
+            dst.to_string_lossy().into_owned(),
+        );
+        tgt.is_template = Some(true);
+        cfg.targets.push(tgt);
+        let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
+        assert_matches!(acts.acts.as_slice(), [Action::TemplateExpand { .. }, ..])
+    }
+
+    #[test]
     fn actions_with_template_does_copy() {
         let src = test_data_path().join("actions_with_test_data.in");
         let dst = test_data_path().join("actions_with_test_data");
         let mut cfg = Root::default();
-        cfg.targets.push(Target {
-            path: Templated(src.to_string_lossy().into_owned()),
-            target_location: Templated(dst.to_string_lossy().into_owned()),
-            shared: Default::default(),
-            link_type: None,
-        });
+        cfg.targets.push(Target::new(
+            src.to_string_lossy().into_owned(),
+            dst.to_string_lossy().into_owned(),
+        ));
         let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
         let target = ResourceLocation::InMemory { id: 0 };
         assert_eq!(

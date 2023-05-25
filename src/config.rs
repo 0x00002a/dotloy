@@ -62,6 +62,11 @@ pub struct Target {
     /// If not specified defaults to [`Hard`](LinkType::Hard) for files and
     /// [`Soft`](LinkType::Soft) for directories
     pub link_type: Option<LinkType>,
+    /// Explicit option to expand template or not
+    ///
+    /// By default it will only be treated as a template if `from` ends with `.in`
+    #[serde(default, rename = "template")]
+    pub is_template: Option<bool>,
 }
 
 impl Target {
@@ -72,6 +77,7 @@ impl Target {
             shared: Default::default(),
             target_location: Templated::new(target_location),
             link_type: None,
+            is_template: None,
         }
     }
 }
