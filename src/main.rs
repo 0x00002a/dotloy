@@ -7,7 +7,7 @@ use std::{
 
 use actions::Actions;
 use args::{Args, DeployCmd, ExpandCmd};
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use colored::{Color, Colorize};
 use config::Root;
 use handybars::{Context, Object, Variable};
@@ -163,6 +163,8 @@ enum Error {
     Template(#[from] handybars::Error),
     #[error("Target does not exist '{0}'")]
     TargetDoesNotExist(String),
+    #[error("Shell is not supported for completions")]
+    UnsupportedShell,
 }
 #[cfg(test)]
 fn test_data_path() -> &'static std::path::Path {
@@ -233,6 +235,13 @@ fn run() -> Result<()> {
         args::Command::Expand(cmd) => run_expand(cmd, cfg_file.as_ref()),
         args::Command::Deploy(cmd) => {
             run_deploy(cmd, cfg_file.as_ref().ok_or(Error::ConfigFileNeeded)?)
+        }
+        args::Command::GenerateShellCompletions => {
+            let shell = clap_complete::Shell::from_env().ok_or(Error::UnsupportedShell)?;
+            let mut cmd = Args::command();
+            let bname = cmd.get_bin_name().unwrap_or(cmd.get_name()).to_owned();
+            clap_complete::generate(shell, &mut cmd, &bname, &mut std::io::stdout());
+            Ok(())
         }
     }?;
     Ok(())

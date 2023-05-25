@@ -26,6 +26,8 @@ pub enum Command {
     Expand(ExpandCmd),
     #[command(about = "Deploy a configuration")]
     Deploy(DeployCmd),
+    #[command(about = "Generate shell completions")]
+    GenerateShellCompletions,
 }
 
 #[derive(clap::Args, Clone)]
