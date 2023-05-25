@@ -32,12 +32,13 @@ pub enum Command {
 
 #[derive(clap::Args, Clone)]
 pub struct ExpandCmd {
-    #[arg(help = "File to expand")]
+    #[arg(help = "File to expand", value_hint = clap::ValueHint::FilePath)]
     pub target: std::path::PathBuf,
     #[arg(
         long,
         short,
-        help = "Output to write to, writes to stdout if not provided"
+        help = "Output to write to, writes to stdout if not provided",
+        value_hint = clap::ValueHint::FilePath,
     )]
     pub output: Option<std::path::PathBuf>,
 }
