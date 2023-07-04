@@ -1,9 +1,8 @@
-# Dotoy
+# Dotloy
 
 ## Introduction
 
 This is a tool for my own personal use for deploying my dotfiles
-
 
 ## Usage
 
@@ -35,7 +34,6 @@ Linking can be done by setting the `to` variable on the path. Files are hard-lin
 while directories are soft-linked. This can be changed by setting `link_type` to `soft` or `hard`
 (`hard` is invalid for directories).
 
-
 ## Example usage
 
 Say I have a config file for my zsh and I want to break it up into different
@@ -47,10 +45,10 @@ config file:
 
 ```yaml
 variables:
-    loaddir: '{{ cwd }}'
+  loaddir: "{{ cwd }}"
 targets:
-    - from: zshrc.in
-      to: '{{ xdg.home }}/.zshrc'
+  - from: zshrc.in
+    to: "{{ xdg.home }}/.zshrc"
 ```
 
 zshrc.in:
