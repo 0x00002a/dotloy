@@ -10,11 +10,30 @@ use crate::{
 };
 use handybars::{self};
 
-#[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Deserialize, Debug, Eq, Clone)]
 #[serde(untagged)]
-enum ResourceLocation {
+pub enum ResourceLocation {
     InMemory { id: usize },
     Path(PathBuf),
+}
+impl PartialEq for ResourceLocation {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::InMemory { id: l_id }, Self::InMemory { id: r_id }) => l_id == r_id,
+            (Self::Path(l0), Self::Path(r0)) => {
+                match (fs::canonicalize(l0), fs::canonicalize(r0)) {
+                    (Ok(l), Ok(r)) => l == r,
+                    _ => l0 == r0,
+                }
+            }
+            _ => false,
+        }
+    }
+}
+impl From<PathBuf> for ResourceLocation {
+    fn from(value: PathBuf) -> Self {
+        Self::Path(value)
+    }
 }
 
 impl ResourceLocation {
@@ -104,6 +123,23 @@ impl Action {
             }
         }
     }
+    pub fn dependency(&self) -> Option<ResourceLocation> {
+        match self {
+            Action::Link { from, .. } => Some(ResourceLocation::Path(from.to_owned())),
+            Action::Copy { from, .. } => Some(from.to_owned()),
+            Action::TemplateExpand { target, .. } => Some(target.to_owned()),
+            Action::MkDir { path } => None,
+        }
+    }
+    pub fn output(&self) -> ResourceLocation {
+        match self {
+            Action::Link { to, .. } => ResourceLocation::Path(to.to_owned()),
+            Action::Copy { to, .. } => to.to_owned(),
+            Action::MkDir { path } => ResourceLocation::Path(path.to_owned()),
+            Action::TemplateExpand { output, .. } => output.to_owned(),
+        }
+    }
+
     pub fn configure_watcher(&self, watcher: &mut dyn notify::Watcher) -> notify::Result<()> {
         let src = match self {
             Action::Link { .. } | Action::MkDir { .. } => None,
@@ -114,6 +150,14 @@ impl Action {
             watcher.watch(src, notify::RecursiveMode::NonRecursive)?;
         }
         Ok(())
+    }
+
+    /// Returns `true` if the action is [`Copy`].
+    ///
+    /// [`Copy`]: Action::Copy
+    #[must_use]
+    fn is_copy(&self) -> bool {
+        matches!(self, Self::Copy { .. })
     }
 }
 impl std::fmt::Display for ResourceLocation {
@@ -231,6 +275,72 @@ pub enum Error {
     UnsupportedPlatform,
 }
 
+#[derive(Clone, Debug, Default)]
+struct ActionsBuilder {
+    acts: Vec<Action>,
+    res: ResourceStore,
+}
+impl ActionsBuilder {
+    fn copy(
+        &mut self,
+        from: impl Into<ResourceLocation>,
+        to: impl Into<ResourceLocation>,
+    ) -> &mut Self {
+        self.acts.push(Action::Copy {
+            from: from.into(),
+            to: to.into(),
+        });
+        self
+    }
+    fn link(
+        &mut self,
+        from: impl Into<PathBuf>,
+        to: impl Into<PathBuf>,
+        ty: LinkType,
+    ) -> &mut Self {
+        self.acts.push(Action::Link {
+            ty,
+            from: from.into(),
+            to: to.into(),
+        });
+        self
+    }
+    fn template(
+        &mut self,
+        ctx: handybars::Context<'static>,
+        src: impl Into<ResourceLocation>,
+        dst: impl Into<ResourceLocation>,
+    ) -> &mut Self {
+        self.acts.push(Action::TemplateExpand {
+            ctx,
+            target: src.into(),
+            output: dst.into(),
+        });
+        self
+    }
+    fn template_expand(
+        &mut self,
+        ctx: handybars::Context<'static>,
+        src: impl Into<PathBuf>,
+        dst: impl Into<PathBuf>,
+    ) -> &mut Self {
+        let resource = self.res.define_mem();
+        self.template(ctx, ResourceLocation::Path(src.into()), resource.clone())
+            .copy(resource, ResourceLocation::Path(dst.into()))
+    }
+    fn mkdir(&mut self, dir: impl Into<PathBuf>) -> &mut Self {
+        self.acts.push(Action::MkDir { path: dir.into() });
+        self
+    }
+
+    fn build(self) -> Actions {
+        Actions {
+            acts: self.acts,
+            resources: self.res,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Actions {
     acts: Vec<Action>,
@@ -258,10 +368,29 @@ impl Actions {
         }
         Ok(())
     }
+    pub fn dependents_of(&self, roots: Vec<ResourceLocation>) -> Self {
+        let mut todo = roots;
+        let mut dependents: Vec<Action> = Vec::new();
+        while let Some(resource) = todo.pop() {
+            let to_add = self
+                .acts
+                .iter()
+                .filter(|a| a.dependency().as_ref() == Some(&resource) && !dependents.contains(a))
+                .cloned()
+                .collect::<Vec<_>>();
+            for dep in to_add {
+                todo.push(dep.output());
+                dependents.push(dep);
+            }
+        }
+        Self {
+            acts: dependents,
+            resources: self.resources.clone(),
+        }
+    }
     pub fn from_config(cfg: &config::Root, engine: &handybars::Context<'static>) -> Result<Self> {
-        let mut resources = ResourceStore::new();
-        let mut acts = Vec::new();
         let mut engine = engine.clone();
+        let mut builder = ActionsBuilder::default();
         let curr_os = Platform::current().ok_or(Error::UnsupportedPlatform)?;
         if !cfg.shared.is_platform_supported(curr_os) {
             return Err(Error::ConfigDoesNotSupportPlatform);
@@ -293,27 +422,18 @@ impl Actions {
             let dst = ResourceLocation::Path(dst_path.clone());
             if let Some(p) = dst_path.parent() {
                 if !p.exists() {
-                    acts.push(Action::MkDir { path: p.to_owned() });
+                    builder.mkdir(p);
                 }
             }
             let is_template = target
                 .is_template
                 .unwrap_or_else(|| src_path.extension() == Some("in".as_ref()));
             if is_template {
-                let template_dst = resources.define_mem();
-                acts.push(Action::TemplateExpand {
-                    target: src.clone(),
-                    output: template_dst.clone(),
-                    ctx: engine,
-                });
-                acts.push(Action::Copy {
-                    from: template_dst,
-                    to: dst,
-                });
+                builder.template_expand(engine, src_path, dst_path);
             } else {
                 match target.link_type {
                     DeployType::Copy => {
-                        acts.push(Action::Copy { from: src, to: dst });
+                        builder.copy(src_path, dst_path);
                     }
                     DeployType::Auto => {
                         let ty = if fs::canonicalize(&src_path)?.is_dir() {
@@ -321,23 +441,15 @@ impl Actions {
                         } else {
                             LinkType::Hard
                         };
-                        acts.push(Action::Link {
-                            ty,
-                            from: src_path,
-                            to: dst_path,
-                        });
+                        builder.link(src_path, dst_path, ty);
                     }
                     DeployType::Link(ty) => {
-                        acts.push(Action::Link {
-                            ty,
-                            from: src_path,
-                            to: dst_path,
-                        });
+                        builder.link(src_path, dst_path, ty);
                     }
                 }
             }
         }
-        Ok(Self { acts, resources })
+        Ok(builder.build())
     }
 }
 
@@ -348,16 +460,17 @@ mod tests {
     use assert_matches::assert_matches;
     use fs_err as fs;
 
+    use itertools::Itertools;
     use tempdir::TempDir;
 
     use crate::{
         actions::{Action, ResourceLocation},
-        config::{Root, Target},
+        config::{LinkType, Root, Target},
         default_parse_context, test_data_path, xdg_context, Templated,
     };
     use handybars::{Context, Variable};
 
-    use super::Actions;
+    use super::{Actions, ActionsBuilder};
 
     #[test]
     fn explicit_is_template_causes_expansion_even_if_not_ending_with_in() {
@@ -372,6 +485,34 @@ mod tests {
         cfg.targets.push(tgt);
         let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
         assert_matches!(acts.acts.as_slice(), [Action::TemplateExpand { .. }, ..])
+    }
+
+    #[test]
+    fn resource_locations_are_equal_based_on_canonical_path() {
+        assert_eq!(
+            ResourceLocation::Path("./src/..".into()),
+            ResourceLocation::Path(".".into())
+        );
+    }
+    #[test]
+    fn dependents_filters_all_actions_that_depend_on_resource() {
+        let mut b = ActionsBuilder::default();
+        let resources = (0..10).map(|_| b.res.define_mem()).collect::<Vec<_>>();
+        let mut dests = Vec::new();
+        for res in &resources {
+            let dst = b.res.define_mem();
+            dests.push(dst.clone());
+            b.copy(res.to_owned(), dst);
+        }
+        let acts = b.build();
+        for roots in resources.into_iter().powerset() {
+            let root_len = roots.len();
+            let deps = acts.dependents_of(roots);
+            assert_eq!(deps.acts.len(), root_len);
+            for act in deps.acts {
+                assert!(act.is_copy());
+            }
+        }
     }
 
     #[test]

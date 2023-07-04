@@ -17,6 +17,7 @@ use thiserror::Error;
 mod actions;
 mod args;
 mod config;
+use fs_err as fs;
 
 mod vars {
     use handybars::Variable;
@@ -116,7 +117,28 @@ fn run_deploy(args: DeployCmd, cfg_file: &Root) -> Result<()> {
                     | notify::EventKind::Remove(_)
                     | notify::EventKind::Any
                     | notify::EventKind::Modify(_) => {
-                        if let Err(e) = actions.run(args.dry_run) {
+                        log::info!("detected file changes");
+                        log::debug!("notify event: {ev:#?}");
+                        let r = if ev.paths.is_empty() {
+                            None
+                        } else {
+                            Some(ev.paths)
+                        }
+                        .map(|s| {
+                            actions.dependents_of(
+                                s.into_iter()
+                                    .map(|p| {
+                                        fs::canonicalize(p)
+                                            .expect("failed to canonicalize path from notify")
+                                    })
+                                    .map(actions::ResourceLocation::Path)
+                                    .collect(),
+                            )
+                        })
+                        .as_ref()
+                        .unwrap_or(&actions)
+                        .run(args.dry_run);
+                        if let Err(e) = r {
                             log::error!("failed to redeploy: {e}");
                         }
                     }
