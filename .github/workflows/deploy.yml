@@ -1,0 +1,34 @@
+# vim: tw=2,ts=2,sw=2
+name: deploy
+on:
+  release:
+    types:
+      - created
+  workflow_dispatch:
+
+env:
+  RUSTFLAGS: "-Dwarnings"
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+      - name: init toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
+          components: clippy
+      - name: build
+        run: cargo build --release
+      - name: upload assets
+        uses: AButler/upload-release-assets@v2.0.2
+        with:
+          files: "./target/release/dotloy*"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
