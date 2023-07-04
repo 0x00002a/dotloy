@@ -128,7 +128,7 @@ impl Action {
             Action::Link { from, .. } => Some(ResourceLocation::Path(from.to_owned())),
             Action::Copy { from, .. } => Some(from.to_owned()),
             Action::TemplateExpand { target, .. } => Some(target.to_owned()),
-            Action::MkDir { path } => None,
+            Action::MkDir { .. } => None,
         }
     }
     pub fn output(&self) -> ResourceLocation {
@@ -156,6 +156,7 @@ impl Action {
     ///
     /// [`Copy`]: Action::Copy
     #[must_use]
+    #[cfg(test)]
     fn is_copy(&self) -> bool {
         matches!(self, Self::Copy { .. })
     }
@@ -210,10 +211,6 @@ struct ResourceStore {
     handles: Vec<ResourceHandle>,
 }
 impl ResourceStore {
-    fn new() -> Self {
-        Self::default()
-    }
-
     fn define(&mut self, handle: ResourceHandle) -> ResourceLocation {
         let id = self.handles.len();
         self.handles.push(handle);
@@ -418,8 +415,6 @@ impl Actions {
                 });
             }
             let dst_path: PathBuf = target.target_location.render(&engine)?.parse().unwrap();
-            let src = ResourceLocation::Path(src_path.clone());
-            let dst = ResourceLocation::Path(dst_path.clone());
             if let Some(p) = dst_path.parent() {
                 if !p.exists() {
                     builder.mkdir(p);
@@ -465,7 +460,7 @@ mod tests {
 
     use crate::{
         actions::{Action, ResourceLocation},
-        config::{LinkType, Root, Target},
+        config::{Root, Target},
         default_parse_context, test_data_path, xdg_context, Templated,
     };
     use handybars::{Context, Variable};
@@ -637,11 +632,9 @@ mod tests {
         (ctx, dir)
     }
 
-    const TEST_DATA_ROOT: &str = "test_data";
-
     struct TestDataMgr {
         acts: Actions,
-        ctx: Context<'static>,
+        _ctx: Context<'static>,
         dir: TempDir,
     }
     impl TestDataMgr {
@@ -650,7 +643,11 @@ mod tests {
         }
         fn new(name: &'static str) -> Self {
             let (acts, ctx, dir) = load_test_data(name);
-            Self { acts, ctx, dir }
+            Self {
+                acts,
+                _ctx: ctx,
+                dir,
+            }
         }
     }
 
