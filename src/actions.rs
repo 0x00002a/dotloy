@@ -5,7 +5,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    config::{self, LinkType, Platform},
+    config::{self, DeployType, LinkType, Platform},
     define_variables, vars,
 };
 use handybars::{self};
@@ -283,17 +283,30 @@ impl Actions {
                     to: dst,
                 });
             } else {
-                acts.push(Action::Link {
-                    ty: target.link_type.map(Ok::<_, Error>).unwrap_or_else(|| {
-                        Ok(if fs::canonicalize(&src_path)?.is_dir() {
+                match target.link_type {
+                    DeployType::Copy => {
+                        acts.push(Action::Copy { from: src, to: dst });
+                    }
+                    DeployType::Auto => {
+                        let ty = if fs::canonicalize(&src_path)?.is_dir() {
                             LinkType::Soft
                         } else {
                             LinkType::Hard
-                        })
-                    })?,
-                    from: src_path,
-                    to: dst_path,
-                });
+                        };
+                        acts.push(Action::Link {
+                            ty,
+                            from: src_path,
+                            to: dst_path,
+                        });
+                    }
+                    DeployType::Link(ty) => {
+                        acts.push(Action::Link {
+                            ty,
+                            from: src_path,
+                            to: dst_path,
+                        });
+                    }
+                }
             }
         }
         Ok(Self { acts, resources })
@@ -302,6 +315,8 @@ impl Actions {
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+
     use assert_matches::assert_matches;
     use fs_err as fs;
 
@@ -453,6 +468,31 @@ mod tests {
         (ctx, dir)
     }
 
+    const TEST_DATA_ROOT: &str = "test_data";
+
+    struct TestDataMgr {
+        acts: Actions,
+        ctx: Context<'static>,
+        dir: TempDir,
+    }
+    impl TestDataMgr {
+        fn resolve_path(&self, p: &Path) -> PathBuf {
+            self.dir.path().join(p)
+        }
+        fn new(name: &'static str) -> Self {
+            let (acts, ctx, dir) = load_test_data(name);
+            Self { acts, ctx, dir }
+        }
+    }
+
+    fn load_test_data(name: &'static str) -> (Actions, Context, TempDir) {
+        let data = fs::read_to_string(format!("test_data/{name}.yaml")).unwrap();
+        let cfg: Root = serde_yaml::from_str(&data).unwrap();
+        let (ctx, dir) = test_ctx_with_dir(name);
+        let acts = Actions::from_config(&cfg, &ctx).unwrap();
+        (acts, ctx, dir)
+    }
+
     #[test]
     fn non_matching_platform_causes_target_to_be_skipped() {
         const DATA: &str = include_str!("../test_data/nonmatch_platform.yaml");
@@ -471,5 +511,13 @@ mod tests {
         acts.run(false).unwrap();
         let created = fs::symlink_metadata(dir.path().join("softlink-folder")).unwrap();
         assert!(created.is_symlink());
+    }
+
+    #[test]
+    fn explicit_copying_link_type() {
+        let mgr = TestDataMgr::new("copying");
+        mgr.acts.run(false).unwrap();
+        let created = fs::symlink_metadata(mgr.resolve_path("actions.rs".as_ref())).unwrap();
+        assert!(created.is_file());
     }
 }

@@ -1,0 +1,4 @@
+targets:
+  - from: ./src/actions.rs
+    to: '{{test.dir}}'
+    link_type: copy

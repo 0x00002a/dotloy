@@ -1,3 +1,4 @@
 targets:
   - from: '{{ test.data }}/softlink-folder'
     to: '{{ test.dir }}/softlink-folder'
+    link_type: soft
