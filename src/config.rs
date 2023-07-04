@@ -40,6 +40,16 @@ pub struct MultiScopedOptions {
     pub runs_on: Option<OneOrMany<Platform>>,
 }
 
+#[derive(Deserialize, Debug, PartialEq, Eq, Clone, Copy, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DeployType {
+    #[default]
+    Auto,
+    Copy,
+    #[serde(untagged)]
+    Link(LinkType),
+}
+
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct Target {
     /// Local path
@@ -61,7 +71,8 @@ pub struct Target {
     ///
     /// If not specified defaults to [`Hard`](LinkType::Hard) for files and
     /// [`Soft`](LinkType::Soft) for directories
-    pub link_type: Option<LinkType>,
+    #[serde(default)]
+    pub link_type: DeployType,
     /// Explicit option to expand template or not
     ///
     /// By default it will only be treated as a template if `from` ends with `.in`
@@ -76,7 +87,7 @@ impl Target {
             path: Templated::new(path),
             shared: Default::default(),
             target_location: Templated::new(target_location),
-            link_type: None,
+            link_type: Default::default(),
             is_template: None,
         }
     }
