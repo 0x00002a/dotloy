@@ -46,4 +46,6 @@ pub struct ExpandCmd {
 pub struct DeployCmd {
     #[arg(long, help = "Print actions but don't actually do them")]
     pub dry_run: bool,
+    #[arg(long, short, help = "Watch directory and re-deploy on changes")]
+    pub watch: bool,
 }

@@ -1,6 +1,6 @@
 [package]
 name = "dotloy"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 authors = ["0x00002a"]
 license = "MIT"
@@ -16,6 +16,7 @@ fern = { version = "0.6.2", features = ["colored"] }
 fs-err = "2.9.0"
 handybars = "0.2.0"
 log = "0.4.17"
+notify = "6.0.1"
 serde = { version = "1.0.163", features = ["derive"] }
 serde_yaml = "0.9.21"
 symlink = "0.1.0"

@@ -17,6 +17,17 @@ enum ResourceLocation {
     Path(PathBuf),
 }
 
+impl ResourceLocation {
+    #[must_use]
+    fn as_path(&self) -> Option<&PathBuf> {
+        if let Self::Path(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum Action {
     Link {
@@ -92,6 +103,17 @@ impl Action {
                 Ok(())
             }
         }
+    }
+    pub fn configure_watcher(&self, watcher: &mut dyn notify::Watcher) -> notify::Result<()> {
+        let src = match self {
+            Action::Link { .. } | Action::MkDir { .. } => None,
+            Action::Copy { from, .. } => from.as_path(),
+            Action::TemplateExpand { target, .. } => target.as_path(),
+        };
+        if let Some(src) = src {
+            watcher.watch(src, notify::RecursiveMode::NonRecursive)?;
+        }
+        Ok(())
     }
 }
 impl std::fmt::Display for ResourceLocation {
@@ -227,6 +249,12 @@ impl Actions {
             } else {
                 log::info!("{action}");
             }
+        }
+        Ok(())
+    }
+    pub fn configure_watcher(&self, watcher: &mut dyn notify::Watcher) -> notify::Result<()> {
+        for act in &self.acts {
+            act.configure_watcher(watcher)?;
         }
         Ok(())
     }

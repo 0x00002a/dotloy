@@ -105,6 +105,27 @@ fn run_deploy(args: DeployCmd, cfg_file: &Root) -> Result<()> {
     let template_engine = default_parse_context();
     let actions = Actions::from_config(cfg_file, &template_engine)?;
     actions.run(args.dry_run)?;
+    if args.watch {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut watcher = notify::recommended_watcher(tx)?;
+        actions.configure_watcher(&mut watcher)?;
+        for res in rx {
+            match res {
+                Ok(ev) => match ev.kind {
+                    notify::EventKind::Create(_)
+                    | notify::EventKind::Remove(_)
+                    | notify::EventKind::Any
+                    | notify::EventKind::Modify(_) => {
+                        if let Err(e) = actions.run(args.dry_run) {
+                            log::error!("failed to redeploy: {e}");
+                        }
+                    }
+                    _ => {}
+                },
+                Err(e) => log::error!("watch error: {e}"),
+            };
+        }
+    }
     Ok(())
 }
 fn run_expand(cmd: ExpandCmd, cfg: Option<&Root>) -> Result<()> {
@@ -165,6 +186,8 @@ enum Error {
     TargetDoesNotExist(String),
     #[error("Shell is not supported for completions")]
     UnsupportedShell,
+    #[error("Watch error '{0}'")]
+    Watch(#[from] notify::Error),
 }
 #[cfg(test)]
 fn test_data_path() -> &'static std::path::Path {
