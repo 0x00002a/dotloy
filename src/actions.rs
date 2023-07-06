@@ -548,7 +548,9 @@ mod tests {
             dst.to_string_lossy().into_owned(),
         ));
         let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
-        let target = ResourceLocation::InMemory { id: Uuid::new_v4() };
+        let target = ResourceLocation::InMemory {
+            id: acts.resources.handles.keys().next().unwrap().to_owned(),
+        };
         assert_eq!(
             &acts.acts,
             &[
