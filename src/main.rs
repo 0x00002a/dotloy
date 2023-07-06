@@ -154,6 +154,7 @@ fn run_deploy(args: DeployCmd) -> Result<()> {
     } else {
         None
     };
+    let root_dir = std::env::current_dir()?;
     for target in args.targets.clone() {
         let Ok(Some(cfg)) = read_config(&target).map_err(|e| {
             log::warn!("failed to load target '{target}': {e}", target = target.to_string_lossy());
@@ -163,9 +164,11 @@ fn run_deploy(args: DeployCmd) -> Result<()> {
         } v}) else {
             continue;
         };
+        std::env::set_current_dir(root_dir.join(resolve_config_dir(&target).unwrap()))?;
         let mut acts = Actions::from_config(&cfg, &template_engine)?;
         actions.append(&mut acts);
     }
+    std::env::set_current_dir(&root_dir)?;
     if let Some(watcher) = &mut watcher {
         actions.configure_watcher(watcher)?;
     }
@@ -284,11 +287,12 @@ fn init_logging(level: log::LevelFilter) {
 }
 
 const DOTLOY_CFG_NAMES: [&str; 2] = ["dotloy.yaml", "dotloy.yml"];
-fn find_config_in_dir(dir: &Path) -> Option<&Path> {
+fn find_config_in_dir(dir: &Path) -> Option<PathBuf> {
     assert!(dir.is_dir(), "tried to find config in non-directory");
     DOTLOY_CFG_NAMES
         .into_iter()
         .map(Path::new)
+        .map(|p| dir.join(p))
         .find(|c| c.exists())
 }
 fn resolve_config_dir(p: &Path) -> Option<&Path> {
@@ -303,7 +307,7 @@ fn read_config(p: &Path) -> Result<Option<Root>> {
     let p = if p.is_dir() {
         find_config_in_dir(p)
     } else {
-        Some(p)
+        Some(p.to_owned())
     };
     p.map(|p| {
         let cfg = serde_yaml::from_reader(BufReader::new(fs::File::open(p)?))?;
