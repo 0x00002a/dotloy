@@ -158,10 +158,18 @@ fn run_deploy(args: DeployCmd) -> Result<()> {
     } else {
         None
     };
-    let root_dir = std::env::current_dir()?;
+    let root_dir = fs::canonicalize(std::env::current_dir()?)?;
     for target in args.targets.clone() {
+        let target_str = target.to_string_lossy();
+        if !target.exists() {
+            log::warn!("path '{target_str}' does not exist");
+            continue;
+        }
+        let Ok(target) = fs::canonicalize(&target).map_err(|e| {
+            log::warn!("failed to canonicalize path '{target_str}': {e}, skipping...");
+        }) else {continue;};
         let Ok(Some(cfg)) = read_config(&target).map_err(|e| {
-            log::warn!("failed to load target '{target}': {e}", target = target.to_string_lossy());
+            log::warn!("failed to load config at '{target}': {e}", target = target.to_string_lossy());
         }).map(|v| {
             if v.is_none() {
                 log::warn!("failed to find config file for '{target}'", target = target.to_string_lossy());
@@ -171,6 +179,7 @@ fn run_deploy(args: DeployCmd) -> Result<()> {
         std::env::set_current_dir(root_dir.join(resolve_config_dir(&target).unwrap()))?;
         let mut acts = Actions::from_config(&cfg, &template_engine)?;
         actions.append(&mut acts);
+        std::env::set_current_dir(&root_dir)?;
     }
     std::env::set_current_dir(&root_dir)?;
     if let Some(watcher) = &mut watcher {
