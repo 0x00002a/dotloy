@@ -15,11 +15,14 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod abspath;
 mod actions;
 mod args;
 mod config;
 pub(crate) mod resources;
 use fs_err as fs;
+
+use crate::abspath::AbsPathBuf;
 
 mod vars {
     use handybars::Variable;
@@ -100,7 +103,7 @@ fn handle_watch_updates(
     rx: std::sync::mpsc::Receiver<notify::Result<notify::Event>>,
 ) {
     log::info!(
-        "watching for file changes on {}",
+        "watching for file changes on [{}]",
         actions
             .file_roots()
             .map(|p| p.to_string_lossy().into_owned())
@@ -124,7 +127,7 @@ fn handle_watch_updates(
                         actions.dependents_of(
                             s.into_iter()
                                 .map(|p| {
-                                    fs::canonicalize(p)
+                                    AbsPathBuf::new(p)
                                         .expect("failed to canonicalize path from notify")
                                 })
                                 .map(resources::ResourceLocation::Path)
@@ -171,7 +174,7 @@ fn run_deploy(args: DeployCmd) -> Result<()> {
     }
     std::env::set_current_dir(&root_dir)?;
     if let Some(watcher) = &mut watcher {
-        log::debug!("acts: {actions:#?}");
+        log::debug!("actions: {actions:#?}");
         actions.configure_watcher(watcher)?;
     }
     actions.run(args.dry_run)?;

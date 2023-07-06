@@ -1,3 +1,4 @@
+use crate::abspath::AbsPathBuf;
 use std::io::Write;
 use std::{collections::HashMap, path::PathBuf};
 
@@ -5,35 +6,21 @@ use fs_err as fs;
 use serde::Deserialize;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Eq, Clone)]
+#[derive(Deserialize, Debug, Eq, PartialEq, Clone)]
 #[serde(untagged)]
 pub enum ResourceLocation {
     InMemory { id: Uuid },
-    Path(PathBuf),
+    Path(AbsPathBuf),
 }
-impl PartialEq for ResourceLocation {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::InMemory { id: l_id }, Self::InMemory { id: r_id }) => l_id == r_id,
-            (Self::Path(l0), Self::Path(r0)) => {
-                match (fs::canonicalize(l0), fs::canonicalize(r0)) {
-                    (Ok(l), Ok(r)) => l == r,
-                    _ => l0 == r0,
-                }
-            }
-            _ => false,
-        }
-    }
-}
-impl From<PathBuf> for ResourceLocation {
-    fn from(value: PathBuf) -> Self {
+impl From<AbsPathBuf> for ResourceLocation {
+    fn from(value: AbsPathBuf) -> Self {
         Self::Path(value)
     }
 }
 
 impl ResourceLocation {
     #[must_use]
-    pub fn as_path(&self) -> Option<&PathBuf> {
+    pub fn as_path(&self) -> Option<&AbsPathBuf> {
         if let Self::Path(v) = self {
             Some(v)
         } else {
@@ -54,7 +41,7 @@ impl std::fmt::Display for ResourceLocation {
 #[derive(Debug, Clone)]
 pub enum ResourceHandle {
     MemStr(String),
-    File(PathBuf),
+    File(AbsPathBuf),
 }
 impl ResourceHandle {
     fn content(&self) -> std::io::Result<String> {
@@ -96,7 +83,7 @@ impl ResourceStore {
                 Ok(())
             }
             ResourceLocation::Path(p) => {
-                write!(fs::File::create(p)?, "{}", value.content()?)
+                write!(fs::File::create(p.as_os_str())?, "{}", value.content()?)
             }
         }
     }

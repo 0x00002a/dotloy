@@ -2,7 +2,7 @@ use fs_err as fs;
 use std::{
     collections::{BTreeMap, HashMap},
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use uuid::Uuid;
 
@@ -10,6 +10,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
+    abspath::AbsPathBuf,
     config::{self, DeployType, LinkType, Platform},
     define_variables,
     resources::{ResourceHandle, ResourceLocation, ResourceStore},
@@ -21,15 +22,15 @@ use handybars::{self};
 enum Action {
     Link {
         ty: LinkType,
-        from: PathBuf,
-        to: PathBuf,
+        from: AbsPathBuf,
+        to: AbsPathBuf,
     },
     Copy {
         from: ResourceLocation,
         to: ResourceLocation,
     },
     MkDir {
-        path: PathBuf,
+        path: AbsPathBuf,
     },
     TemplateExpand {
         ctx: handybars::Context<'static>,
@@ -199,16 +200,16 @@ impl ActionsBuilder {
     }
     fn link(
         &mut self,
-        from: impl Into<PathBuf>,
-        to: impl Into<PathBuf>,
+        from: impl AsRef<Path>,
+        to: impl AsRef<Path>,
         ty: LinkType,
-    ) -> &mut Self {
+    ) -> std::io::Result<&mut Self> {
         self.acts.push(Action::Link {
             ty,
-            from: from.into(),
-            to: to.into(),
+            from: AbsPathBuf::new(from)?,
+            to: AbsPathBuf::new(to)?,
         });
-        self
+        Ok(self)
     }
     fn template(
         &mut self,
@@ -226,16 +227,23 @@ impl ActionsBuilder {
     fn template_expand(
         &mut self,
         ctx: handybars::Context<'static>,
-        src: impl Into<PathBuf>,
-        dst: impl Into<PathBuf>,
-    ) -> &mut Self {
+        src: impl AsRef<Path>,
+        dst: impl AsRef<Path>,
+    ) -> std::io::Result<&mut Self> {
         let resource = self.res.define_mem();
-        self.template(ctx, ResourceLocation::Path(src.into()), resource.clone())
-            .copy(resource, ResourceLocation::Path(dst.into()))
+        self.template(
+            ctx,
+            ResourceLocation::Path(AbsPathBuf::new(src)?),
+            resource.clone(),
+        )
+        .copy(resource, ResourceLocation::Path(AbsPathBuf::new(dst)?));
+        Ok(self)
     }
-    fn mkdir(&mut self, dir: impl Into<PathBuf>) -> &mut Self {
-        self.acts.push(Action::MkDir { path: dir.into() });
-        self
+    fn mkdir(&mut self, dir: impl AsRef<Path>) -> std::io::Result<&mut Self> {
+        self.acts.push(Action::MkDir {
+            path: AbsPathBuf::new(dir)?,
+        });
+        Ok(self)
     }
 
     fn build(self) -> Actions {
@@ -285,7 +293,7 @@ impl Actions {
         Ok(())
     }
     /// Get all the paths that the filesystem uses
-    pub fn file_roots(&self) -> impl Iterator<Item = PathBuf> + '_ {
+    pub fn file_roots(&self) -> impl Iterator<Item = AbsPathBuf> + '_ {
         self.acts
             .iter()
             .filter_map(|act| Some(act.dependency()?.as_path()?.to_owned()))
@@ -353,7 +361,7 @@ impl Actions {
             } else {
                 match target.link_type {
                     DeployType::Copy => {
-                        builder.copy(src_path, dst_path);
+                        builder.copy(AbsPathBuf::new(src_path)?, AbsPathBuf::new(dst_path)?);
                     }
                     DeployType::Auto => {
                         let ty = if fs::canonicalize(&src_path)?.is_dir() {
@@ -385,6 +393,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
+        abspath::AbsPathBuf,
         actions::{Action, ResourceLocation},
         config::{Root, Target},
         default_parse_context, test_data_path, xdg_context, Error, Templated,
@@ -411,8 +420,8 @@ mod tests {
     #[test]
     fn resource_locations_are_equal_based_on_canonical_path() {
         assert_eq!(
-            ResourceLocation::Path("./src/..".into()),
-            ResourceLocation::Path(".".into())
+            ResourceLocation::Path(AbsPathBuf::new("./src/..").unwrap()),
+            ResourceLocation::Path(AbsPathBuf::new(".").unwrap())
         );
     }
     #[test]
@@ -438,8 +447,8 @@ mod tests {
 
     #[test]
     fn actions_with_template_does_copy() {
-        let src = test_data_path().join("actions_with_test_data.in");
-        let dst = test_data_path().join("actions_with_test_data");
+        let src = AbsPathBuf::new(test_data_path().join("actions_with_test_data.in")).unwrap();
+        let dst = AbsPathBuf::new(test_data_path().join("actions_with_test_data")).unwrap();
         let mut cfg = Root::default();
         cfg.targets.push(Target::new(
             src.to_string_lossy().into_owned(),
@@ -486,8 +495,8 @@ mod tests {
             &acts.acts,
             &[Action::Link {
                 ty: crate::config::LinkType::Hard,
-                to: xdg_context().render(&t1val).unwrap().into(),
-                from: "src/actions.rs".into()
+                to: AbsPathBuf::new(xdg_context().render(&t1val).unwrap()).unwrap(),
+                from: AbsPathBuf::new("src/actions.rs").unwrap()
             }]
         )
     }
@@ -506,12 +515,12 @@ mod tests {
             &acts.acts,
             &[
                 Action::MkDir {
-                    path: "/home/nonexistant".into(),
+                    path: "/home/nonexistant".try_into().unwrap(),
                 },
                 Action::Link {
                     ty: crate::config::LinkType::Hard,
-                    from: "src/actions.rs".into(),
-                    to: "/home/nonexistant/hello.txt".into()
+                    from: "src/actions.rs".try_into().unwrap(),
+                    to: "/home/nonexistant/hello.txt".try_into().unwrap()
                 }
             ]
         )
@@ -531,8 +540,8 @@ mod tests {
             &acts.acts,
             &[Action::Link {
                 ty: crate::config::LinkType::Hard,
-                to: xdg_context().render(&t1val).unwrap().into(),
-                from: "src/actions.rs".into()
+                to: xdg_context().render(&t1val).unwrap().try_into().unwrap(),
+                from: "src/actions.rs".try_into().unwrap()
             }]
         )
     }
@@ -549,8 +558,8 @@ mod tests {
             &acts.acts,
             &[Action::Link {
                 ty: crate::config::LinkType::Hard,
-                from: "src/actions.rs".into(),
-                to: "./dst".into()
+                from: "src/actions.rs".try_into().unwrap(),
+                to: "./dst".try_into().unwrap()
             }]
         )
     }
