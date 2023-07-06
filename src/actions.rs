@@ -1,5 +1,10 @@
 use fs_err as fs;
-use std::{io::Write, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashMap},
+    io::Write,
+    path::PathBuf,
+};
+use uuid::Uuid;
 
 use serde::Deserialize;
 use thiserror::Error;
@@ -13,7 +18,7 @@ use handybars::{self};
 #[derive(Deserialize, Debug, Eq, Clone)]
 #[serde(untagged)]
 pub enum ResourceLocation {
-    InMemory { id: usize },
+    InMemory { id: Uuid },
     Path(PathBuf),
 }
 impl PartialEq for ResourceLocation {
@@ -208,19 +213,19 @@ impl ResourceHandle {
 
 #[derive(Debug, Clone, Default)]
 struct ResourceStore {
-    handles: Vec<ResourceHandle>,
+    handles: HashMap<Uuid, ResourceHandle>,
 }
 impl ResourceStore {
     fn define(&mut self, handle: ResourceHandle) -> ResourceLocation {
-        let id = self.handles.len();
-        self.handles.push(handle);
+        let id = Uuid::new_v4();
+        self.handles.insert(id, handle);
         ResourceLocation::InMemory { id }
     }
     fn define_mem(&mut self) -> ResourceLocation {
         self.define(ResourceHandle::MemStr("".to_owned()))
     }
-    fn set(&mut self, target: usize, value: ResourceHandle) {
-        self.handles[target] = value;
+    fn set(&mut self, target: Uuid, value: ResourceHandle) {
+        self.handles.insert(target, value);
     }
     fn set_content(
         &mut self,
@@ -238,14 +243,17 @@ impl ResourceStore {
         }
     }
 
-    fn get(&self, target: usize) -> &ResourceHandle {
-        &self.handles[target]
+    fn get(&self, target: Uuid) -> &ResourceHandle {
+        &self.handles[&target]
     }
     fn get_content(&self, target: &ResourceLocation) -> std::io::Result<String> {
         match target {
             ResourceLocation::InMemory { id } => self.get(*id).content(),
             ResourceLocation::Path(p) => fs::read_to_string(p),
         }
+    }
+    pub fn append(&mut self, other: &mut ResourceStore) {
+        self.handles.extend(other.handles.drain());
     }
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -270,6 +278,8 @@ pub enum Error {
     ConfigDoesNotSupportPlatform,
     #[error("Terribly sorry, but dotloy doesn't support this platform/os")]
     UnsupportedPlatform,
+    #[error("No actions to perform, did you not define any targets in your config?")]
+    NoActions,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -338,14 +348,25 @@ impl ActionsBuilder {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Actions {
     acts: Vec<Action>,
     resources: ResourceStore,
 }
 
 impl Actions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn append(&mut self, other: &mut Actions) {
+        self.acts.append(&mut other.acts);
+        self.resources.append(&mut other.resources);
+    }
+
     pub fn run(&self, dry: bool) -> Result<()> {
+        if self.acts.is_empty() {
+            return Err(Error::NoActions);
+        }
         let mut res = self.resources.clone();
         for action in &self.acts {
             if !dry {
@@ -364,6 +385,12 @@ impl Actions {
             act.configure_watcher(watcher)?;
         }
         Ok(())
+    }
+    /// Get all the paths that the filesystem uses
+    pub fn file_roots(&self) -> impl Iterator<Item = PathBuf> + '_ {
+        self.acts
+            .iter()
+            .filter_map(|act| Some(act.dependency()?.as_path()?.to_owned()))
     }
     pub fn dependents_of(&self, roots: Vec<ResourceLocation>) -> Self {
         let mut todo = roots;
@@ -457,11 +484,12 @@ mod tests {
 
     use itertools::Itertools;
     use tempdir::TempDir;
+    use uuid::Uuid;
 
     use crate::{
         actions::{Action, ResourceLocation},
         config::{Root, Target},
-        default_parse_context, test_data_path, xdg_context, Templated,
+        default_parse_context, test_data_path, xdg_context, Error, Templated,
     };
     use handybars::{Context, Variable};
 
@@ -520,7 +548,7 @@ mod tests {
             dst.to_string_lossy().into_owned(),
         ));
         let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
-        let target = ResourceLocation::InMemory { id: 0 };
+        let target = ResourceLocation::InMemory { id: Uuid::new_v4() };
         assert_eq!(
             &acts.acts,
             &[
@@ -685,5 +713,10 @@ mod tests {
         mgr.acts.run(false).unwrap();
         let created = fs::symlink_metadata(mgr.resolve_path("actions.rs".as_ref())).unwrap();
         assert!(created.is_file());
+    }
+    #[test]
+    fn trying_to_run_an_empty_actions_is_an_error() {
+        let acts = Actions::new();
+        assert_matches!(acts.run(false), Err(crate::actions::Error::NoActions));
     }
 }

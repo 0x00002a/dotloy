@@ -1,7 +1,7 @@
 #![deny(unused_crate_dependencies)]
 use std::{
     io::{BufReader, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::exit,
 };
 
@@ -11,6 +11,7 @@ use clap::{CommandFactory, Parser};
 use colored::{Color, Colorize};
 use config::Root;
 use handybars::{Context, Object, Variable};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -63,16 +64,6 @@ fn default_parse_context() -> Context<'static> {
     ctx.append(xdg_context());
     ctx
 }
-fn find_cfg_file() -> Option<PathBuf> {
-    let path = std::env::current_dir()
-        .expect("failed to get cwd")
-        .join("dotloy.yaml");
-    if path.exists() {
-        Some(path)
-    } else {
-        None
-    }
-}
 
 #[repr(transparent)]
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -102,52 +93,87 @@ fn define_variables<'a, 'b>(
     Ok(())
 }
 
-fn run_deploy(args: DeployCmd, cfg_file: &Root) -> Result<()> {
-    let template_engine = default_parse_context();
-    let actions = Actions::from_config(cfg_file, &template_engine)?;
-    actions.run(args.dry_run)?;
-    if args.watch {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let mut watcher = notify::recommended_watcher(tx)?;
-        actions.configure_watcher(&mut watcher)?;
-        for res in rx {
-            match res {
-                Ok(ev) => match ev.kind {
-                    notify::EventKind::Create(_)
-                    | notify::EventKind::Remove(_)
-                    | notify::EventKind::Any
-                    | notify::EventKind::Modify(_) => {
-                        log::info!("detected file changes");
-                        log::debug!("notify event: {ev:#?}");
-                        let r = if ev.paths.is_empty() {
-                            None
-                        } else {
-                            Some(ev.paths)
-                        }
-                        .map(|s| {
-                            actions.dependents_of(
-                                s.into_iter()
-                                    .map(|p| {
-                                        fs::canonicalize(p)
-                                            .expect("failed to canonicalize path from notify")
-                                    })
-                                    .map(actions::ResourceLocation::Path)
-                                    .collect(),
-                            )
-                        })
-                        .as_ref()
-                        .unwrap_or(&actions)
-                        .run(args.dry_run);
-                        if let Err(e) = r {
-                            log::error!("failed to redeploy: {e}");
-                        }
+fn handle_watch_updates(
+    args: DeployCmd,
+    actions: Actions,
+    rx: std::sync::mpsc::Receiver<notify::Result<notify::Event>>,
+) {
+    log::info!(
+        "watching for file changes on {}",
+        actions
+            .file_roots()
+            .map(|p| p.to_string_lossy().into_owned())
+            .join(", ")
+    );
+    for res in rx {
+        match res {
+            Ok(ev) => match ev.kind {
+                notify::EventKind::Create(_)
+                | notify::EventKind::Remove(_)
+                | notify::EventKind::Any
+                | notify::EventKind::Modify(_) => {
+                    log::info!("detected file changes");
+                    log::debug!("notify event: {ev:#?}");
+                    let r = if ev.paths.is_empty() {
+                        None
+                    } else {
+                        Some(ev.paths)
                     }
-                    _ => {}
-                },
-                Err(e) => log::error!("watch error: {e}"),
-            };
-        }
+                    .map(|s| {
+                        actions.dependents_of(
+                            s.into_iter()
+                                .map(|p| {
+                                    fs::canonicalize(p)
+                                        .expect("failed to canonicalize path from notify")
+                                })
+                                .map(actions::ResourceLocation::Path)
+                                .collect(),
+                        )
+                    })
+                    .as_ref()
+                    .unwrap_or(&actions)
+                    .run(args.dry_run);
+                    if let Err(e) = r {
+                        log::error!("failed to redeploy: {e}");
+                    }
+                }
+                _ => {}
+            },
+            Err(e) => log::error!("watch error: {e}"),
+        };
     }
+}
+
+fn run_deploy(args: DeployCmd) -> Result<()> {
+    let template_engine = default_parse_context();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut actions = Actions::new();
+    let mut watcher = if args.watch {
+        let watcher = notify::recommended_watcher(tx)?;
+        Some(watcher)
+    } else {
+        None
+    };
+    for target in args.targets.clone() {
+        let Ok(Some(cfg)) = read_config(&target).map_err(|e| {
+            log::warn!("failed to load target '{target}': {e}", target = target.to_string_lossy());
+        }).map(|v| {
+            if v.is_none() {
+                log::warn!("failed to find config file for '{target}'", target = target.to_string_lossy());
+        } v}) else {
+            continue;
+        };
+        let mut acts = Actions::from_config(&cfg, &template_engine)?;
+        actions.append(&mut acts);
+    }
+    if let Some(watcher) = &mut watcher {
+        actions.configure_watcher(watcher)?;
+    }
+    actions.run(args.dry_run)?;
+    if watcher.is_some() {
+        handle_watch_updates(args, actions, rx);
+    }
+
     Ok(())
 }
 fn run_expand(cmd: ExpandCmd, cfg: Option<&Root>) -> Result<()> {
@@ -257,30 +283,52 @@ fn init_logging(level: log::LevelFilter) {
         .expect("failed to init logging");
 }
 
+const DOTLOY_CFG_NAMES: [&str; 2] = ["dotloy.yaml", "dotloy.yml"];
+fn find_config_in_dir(dir: &Path) -> Option<&Path> {
+    assert!(dir.is_dir(), "tried to find config in non-directory");
+    DOTLOY_CFG_NAMES
+        .into_iter()
+        .map(Path::new)
+        .find(|c| c.exists())
+}
+fn resolve_config_dir(p: &Path) -> Option<&Path> {
+    if p.is_dir() {
+        Some(p)
+    } else {
+        p.parent()
+    }
+}
+
+fn read_config(p: &Path) -> Result<Option<Root>> {
+    let p = if p.is_dir() {
+        find_config_in_dir(p)
+    } else {
+        Some(p)
+    };
+    p.map(|p| {
+        let cfg = serde_yaml::from_reader(BufReader::new(fs::File::open(p)?))?;
+        Ok(cfg)
+    })
+    .transpose()
+}
+
 fn run() -> Result<()> {
     let args = Args::parse();
     init_logging(args.log_level);
-    let cfg_file = args.config.or_else(find_cfg_file);
-    if let Some(p) = &cfg_file {
-        if !p.exists() {
-            return Err(Error::ConfigFileDoesNotExist {
-                path: p.to_string_lossy().into_owned(),
-            });
-        }
-        if let Some(parent) = p.parent() {
-            std::env::set_current_dir(parent)?;
-        }
-    }
-    let cfg_file = cfg_file
-        .map(|p| Ok::<_, Error>(BufReader::new(std::fs::File::open(p)?)))
-        .transpose()?
-        .map(serde_yaml::from_reader)
-        .transpose()?;
     match args.cmd {
-        args::Command::Expand(cmd) => run_expand(cmd, cfg_file.as_ref()),
-        args::Command::Deploy(cmd) => {
-            run_deploy(cmd, cfg_file.as_ref().ok_or(Error::ConfigFileNeeded)?)
+        args::Command::Expand(cmd) => {
+            let cfg = cmd
+                .config
+                .as_ref()
+                .map(|c| read_config(c))
+                .transpose()?
+                .flatten();
+            if let Some(p) = &cmd.config {
+                std::env::set_current_dir(resolve_config_dir(p).unwrap())?;
+            }
+            run_expand(cmd, cfg.as_ref())
         }
+        args::Command::Deploy(cmd) => run_deploy(cmd),
         args::Command::GenerateShellCompletions => {
             let shell = clap_complete::Shell::from_env().ok_or(Error::UnsupportedShell)?;
             let mut cmd = Args::command();
