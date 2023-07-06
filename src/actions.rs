@@ -11,46 +11,11 @@ use thiserror::Error;
 
 use crate::{
     config::{self, DeployType, LinkType, Platform},
-    define_variables, vars,
+    define_variables,
+    resources::{ResourceHandle, ResourceLocation, ResourceStore},
+    vars,
 };
 use handybars::{self};
-
-#[derive(Deserialize, Debug, Eq, Clone)]
-#[serde(untagged)]
-pub enum ResourceLocation {
-    InMemory { id: Uuid },
-    Path(PathBuf),
-}
-impl PartialEq for ResourceLocation {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::InMemory { id: l_id }, Self::InMemory { id: r_id }) => l_id == r_id,
-            (Self::Path(l0), Self::Path(r0)) => {
-                match (fs::canonicalize(l0), fs::canonicalize(r0)) {
-                    (Ok(l), Ok(r)) => l == r,
-                    _ => l0 == r0,
-                }
-            }
-            _ => false,
-        }
-    }
-}
-impl From<PathBuf> for ResourceLocation {
-    fn from(value: PathBuf) -> Self {
-        Self::Path(value)
-    }
-}
-
-impl ResourceLocation {
-    #[must_use]
-    fn as_path(&self) -> Option<&PathBuf> {
-        if let Self::Path(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-}
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum Action {
@@ -166,14 +131,6 @@ impl Action {
         matches!(self, Self::Copy { .. })
     }
 }
-impl std::fmt::Display for ResourceLocation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ResourceLocation::InMemory { id } => write!(f, "@{id}"),
-            ResourceLocation::Path(p) => write!(f, "{}", p.to_string_lossy()),
-        }
-    }
-}
 impl std::fmt::Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -197,65 +154,6 @@ impl std::fmt::Display for Action {
     }
 }
 
-#[derive(Debug, Clone)]
-enum ResourceHandle {
-    MemStr(String),
-    File(PathBuf),
-}
-impl ResourceHandle {
-    fn content(&self) -> std::io::Result<String> {
-        match self {
-            ResourceHandle::MemStr(s) => Ok(s.clone()),
-            ResourceHandle::File(f) => fs::read_to_string(f),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-struct ResourceStore {
-    handles: HashMap<Uuid, ResourceHandle>,
-}
-impl ResourceStore {
-    fn define(&mut self, handle: ResourceHandle) -> ResourceLocation {
-        let id = Uuid::new_v4();
-        self.handles.insert(id, handle);
-        ResourceLocation::InMemory { id }
-    }
-    fn define_mem(&mut self) -> ResourceLocation {
-        self.define(ResourceHandle::MemStr("".to_owned()))
-    }
-    fn set(&mut self, target: Uuid, value: ResourceHandle) {
-        self.handles.insert(target, value);
-    }
-    fn set_content(
-        &mut self,
-        target: &ResourceLocation,
-        value: ResourceHandle,
-    ) -> std::io::Result<()> {
-        match target {
-            ResourceLocation::InMemory { id } => {
-                self.set(*id, value);
-                Ok(())
-            }
-            ResourceLocation::Path(p) => {
-                write!(fs::File::create(p)?, "{}", value.content()?)
-            }
-        }
-    }
-
-    fn get(&self, target: Uuid) -> &ResourceHandle {
-        &self.handles[&target]
-    }
-    fn get_content(&self, target: &ResourceLocation) -> std::io::Result<String> {
-        match target {
-            ResourceLocation::InMemory { id } => self.get(*id).content(),
-            ResourceLocation::Path(p) => fs::read_to_string(p),
-        }
-    }
-    pub fn append(&mut self, other: &mut ResourceStore) {
-        self.handles.extend(other.handles.drain());
-    }
-}
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Error, Debug)]
@@ -549,7 +447,13 @@ mod tests {
         ));
         let acts = Actions::from_config(&cfg, &default_parse_context()).unwrap();
         let target = ResourceLocation::InMemory {
-            id: acts.resources.handles.keys().next().unwrap().to_owned(),
+            id: acts
+                .resources
+                .test_handles()
+                .keys()
+                .next()
+                .unwrap()
+                .to_owned(),
         };
         assert_eq!(
             &acts.acts,

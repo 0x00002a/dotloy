@@ -18,6 +18,7 @@ use thiserror::Error;
 mod actions;
 mod args;
 mod config;
+pub(crate) mod resources;
 use fs_err as fs;
 
 mod vars {
@@ -126,7 +127,7 @@ fn handle_watch_updates(
                                     fs::canonicalize(p)
                                         .expect("failed to canonicalize path from notify")
                                 })
-                                .map(actions::ResourceLocation::Path)
+                                .map(resources::ResourceLocation::Path)
                                 .collect(),
                         )
                     })
@@ -170,6 +171,7 @@ fn run_deploy(args: DeployCmd) -> Result<()> {
     }
     std::env::set_current_dir(&root_dir)?;
     if let Some(watcher) = &mut watcher {
+        log::debug!("acts: {actions:#?}");
         actions.configure_watcher(watcher)?;
     }
     actions.run(args.dry_run)?;
