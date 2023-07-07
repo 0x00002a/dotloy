@@ -1,12 +1,9 @@
 use fs_err as fs;
 use std::{
-    collections::{BTreeMap, HashMap},
     io::Write,
     path::{Path, PathBuf},
 };
-use uuid::Uuid;
 
-use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
@@ -390,13 +387,12 @@ mod tests {
 
     use itertools::Itertools;
     use tempdir::TempDir;
-    use uuid::Uuid;
 
     use crate::{
         abspath::AbsPathBuf,
         actions::{Action, ResourceLocation},
         config::{Root, Target},
-        default_parse_context, test_data_path, xdg_context, Error, Templated,
+        default_parse_context, test_data_path, xdg_context, Templated,
     };
     use handybars::{Context, Variable};
 

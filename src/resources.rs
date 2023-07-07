@@ -1,6 +1,6 @@
 use crate::abspath::AbsPathBuf;
 use std::io::Write;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap};
 
 use fs_err as fs;
 use serde::Deserialize;
