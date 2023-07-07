@@ -347,14 +347,14 @@ impl Actions {
             let dst_path: PathBuf = target.target_location.render(&engine)?.parse().unwrap();
             if let Some(p) = dst_path.parent() {
                 if !p.exists() {
-                    builder.mkdir(p);
+                    builder.mkdir(p)?;
                 }
             }
             let is_template = target
                 .is_template
                 .unwrap_or_else(|| src_path.extension() == Some("in".as_ref()));
             if is_template {
-                builder.template_expand(engine, src_path, dst_path);
+                builder.template_expand(engine, src_path, dst_path)?;
             } else {
                 match target.link_type {
                     DeployType::Copy => {
@@ -366,10 +366,10 @@ impl Actions {
                         } else {
                             LinkType::Hard
                         };
-                        builder.link(src_path, dst_path, ty);
+                        builder.link(src_path, dst_path, ty)?;
                     }
                     DeployType::Link(ty) => {
-                        builder.link(src_path, dst_path, ty);
+                        builder.link(src_path, dst_path, ty)?;
                     }
                 }
             }

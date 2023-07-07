@@ -1,3 +1,4 @@
+#![deny(unused_must_use)]
 #![deny(unused_crate_dependencies)]
 use std::{
     io::{BufReader, Write},
