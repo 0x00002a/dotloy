@@ -240,10 +240,6 @@ enum Error {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Parse(#[from] serde_yaml::Error),
-    #[error("Config file is required for this command")]
-    ConfigFileNeeded,
-    #[error("Config file '{path}' does not exist")]
-    ConfigFileDoesNotExist { path: String },
     #[error(transparent)]
     Action(#[from] actions::Error),
     #[error(transparent)]

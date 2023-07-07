@@ -1,8 +1,5 @@
 use fs_err as fs;
-use std::{
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
