@@ -18,7 +18,7 @@ pub struct Args {
 pub enum Command {
     #[command(about = "Expand a file using the template engine")]
     Expand(ExpandCmd),
-    #[command(about = "Deploy a configuration")]
+    #[command(about = "Deploy a configuration", visible_alias = "d")]
     Deploy(DeployCmd),
     #[command(about = "Generate shell completions")]
     GenerateShellCompletions,
