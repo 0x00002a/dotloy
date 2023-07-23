@@ -112,7 +112,14 @@ impl Action {
             Action::TemplateExpand { target, .. } => target.as_path(),
         };
         if let Some(src) = src {
-            watcher.watch(src, notify::RecursiveMode::NonRecursive)?;
+            watcher.watch(
+                if !src.is_dir() {
+                    src.parent().unwrap()
+                } else {
+                    src
+                },
+                notify::RecursiveMode::NonRecursive,
+            )?;
         }
         Ok(())
     }

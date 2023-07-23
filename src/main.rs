@@ -107,7 +107,9 @@ fn handle_watch_updates(
         "watching for file changes on [{}]",
         actions
             .file_roots()
-            .map(|p| p.to_string_lossy().into_owned())
+            .map(|p| if !p.is_dir() { p.parent().unwrap() } else { &p }
+                .to_string_lossy()
+                .into_owned())
             .join(", ")
     );
     for res in rx {
