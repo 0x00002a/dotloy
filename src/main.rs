@@ -140,8 +140,12 @@ fn handle_watch_updates(
                     .as_ref()
                     .unwrap_or(&actions)
                     .run(args.dry_run);
-                    if let Err(e) = r {
-                        log::error!("failed to redeploy: {e}");
+                    match r {
+                        Err(actions::Error::NoActions) => {}
+                        Err(e) => {
+                            log::error!("failed to redeploy: {e}");
+                        }
+                        _ => {}
                     }
                 }
                 _ => {}
